@@ -10,7 +10,6 @@
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/observer_list.h"
-#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
@@ -203,8 +202,7 @@ void UsbChooserContext::RevokeObjectPermissionInternal(
   if (session) {
     v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
     v8::HandleScope scope(isolate);
-    gin_helper::Dictionary details =
-        gin_helper::Dictionary::CreateEmpty(isolate);
+    auto details = gin_helper::Dictionary::CreateEmpty(isolate);
     details.Set("device", object);
     details.Set("origin", origin.Serialize());
     session->Emit("usb-device-revoked", details);

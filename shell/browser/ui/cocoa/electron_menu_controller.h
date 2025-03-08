@@ -11,10 +11,6 @@
 #include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
-
 namespace electron {
 class ElectronMenuModel;
 }
@@ -30,8 +26,6 @@ class ElectronMenuModel;
  @protected
   base::WeakPtr<electron::ElectronMenuModel> model_;
   NSMenu* __strong menu_;
-  NSMenuItem* __strong recentDocumentsMenuItem_;
-  NSMenu* __strong recentDocumentsMenuSwap_;
   BOOL isMenuOpen_;
   BOOL useDefaultAccelerator_;
   base::OnceClosure closeCallback;

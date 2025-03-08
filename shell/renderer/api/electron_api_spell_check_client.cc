@@ -7,6 +7,7 @@
 #include <iterator>
 #include <memory>
 #include <set>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -147,7 +148,7 @@ void SpellCheckClient::SpellCheckText() {
     return;
   }
 
-  text_iterator_.SetText(text.c_str(), text.size());
+  text_iterator_.SetText(text);
 
   SpellCheckScope scope(*this);
   std::u16string word;
@@ -219,9 +220,9 @@ void SpellCheckClient::SpellCheckWords(const SpellCheckScope& scope,
   DCHECK(!scope.spell_check_.IsEmpty());
 
   auto context = isolate_->GetCurrentContext();
-  gin_helper::MicrotasksScope microtasks_scope(
-      isolate_, context->GetMicrotaskQueue(),
-      v8::MicrotasksScope::kDoNotRunMicrotasks);
+  gin_helper::MicrotasksScope microtasks_scope{
+      isolate_, context->GetMicrotaskQueue(), false,
+      v8::MicrotasksScope::kDoNotRunMicrotasks};
 
   v8::Local<v8::FunctionTemplate> templ = gin_helper::CreateFunctionTemplate(
       isolate_,
@@ -245,7 +246,7 @@ bool SpellCheckClient::IsContraction(
     std::vector<std::u16string>* contraction_words) {
   DCHECK(contraction_iterator_.IsInitialized());
 
-  contraction_iterator_.SetText(contraction.c_str(), contraction.length());
+  contraction_iterator_.SetText(contraction);
 
   std::u16string word;
   size_t word_start;

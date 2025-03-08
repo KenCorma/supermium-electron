@@ -5,10 +5,12 @@
 #ifndef ELECTRON_SHELL_BROWSER_API_ELECTRON_API_SESSION_H_
 #define ELECTRON_SHELL_BROWSER_API_ELECTRON_API_SESSION_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/values.h"
 #include "content/public/browser/download_manager.h"
 #include "electron/buildflags/buildflags.h"
@@ -85,7 +87,7 @@ class Session : public gin::Wrappable<Session>,
                                             base::Value::Dict options = {});
 
   // Gets the Session based on |path|.
-  static absl::optional<gin::Handle<Session>> FromPath(
+  static std::optional<gin::Handle<Session>> FromPath(
       v8::Isolate* isolate,
       const base::FilePath& path,
       base::Value::Dict options = {});
@@ -101,7 +103,7 @@ class Session : public gin::Wrappable<Session>,
   // Methods.
   v8::Local<v8::Promise> ResolveHost(
       std::string host,
-      absl::optional<network::mojom::ResolveHostParametersPtr> params);
+      std::optional<network::mojom::ResolveHostParametersPtr> params);
   v8::Local<v8::Promise> ResolveProxy(gin::Arguments* args);
   v8::Local<v8::Promise> GetCacheSize();
   v8::Local<v8::Promise> ClearCache();
@@ -212,7 +214,9 @@ class Session : public gin::Wrappable<Session>,
   // The client id to enable the network throttler.
   base::UnguessableToken network_emulation_token_;
 
-  raw_ptr<ElectronBrowserContext> browser_context_;
+  const raw_ptr<ElectronBrowserContext> browser_context_;
+
+  base::WeakPtrFactory<Session> weak_factory_{this};
 };
 
 }  // namespace api

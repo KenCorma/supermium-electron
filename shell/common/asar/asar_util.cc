@@ -10,7 +10,6 @@
 
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
-#include "base/lazy_instance.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/stl_util.h"
@@ -47,8 +46,6 @@ bool IsDirectoryCached(const base::FilePath& path) {
   return is_directory_cache[path] = base::DirectoryExists(path);
 }
 
-}  // namespace
-
 ArchiveMap& GetArchiveCache() {
   static base::NoDestructor<ArchiveMap> s_archive_map;
   return *s_archive_map;
@@ -58,6 +55,8 @@ base::Lock& GetArchiveCacheLock() {
   static base::NoDestructor<base::Lock> lock;
   return *lock;
 }
+
+}  // namespace
 
 std::shared_ptr<Archive> GetOrCreateAsarArchive(const base::FilePath& path) {
   base::AutoLock auto_lock(GetArchiveCacheLock());
@@ -77,13 +76,6 @@ std::shared_ptr<Archive> GetOrCreateAsarArchive(const base::FilePath& path) {
 
   // didn't have it, couldn't create it
   return nullptr;
-}
-
-void ClearArchives() {
-  base::AutoLock auto_lock(GetArchiveCacheLock());
-  ArchiveMap& map = GetArchiveCache();
-
-  map.clear();
 }
 
 bool GetAsarArchivePath(const base::FilePath& full_path,

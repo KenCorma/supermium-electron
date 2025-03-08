@@ -130,7 +130,7 @@ class DataPipeReader {
   std::vector<char> buffer_;
 
   // The head of buffer.
-  raw_ptr<char> head_ = nullptr;
+  raw_ptr<char, AllowPtrArithmetic> head_ = nullptr;
 
   // Remaining data to read.
   uint64_t remaining_size_ = 0;
@@ -160,6 +160,10 @@ v8::Local<v8::Promise> DataPipeHolder::ReadAll(v8::Isolate* isolate) {
 
   new DataPipeReader(std::move(promise), std::move(data_pipe_));
   return handle;
+}
+
+const char* DataPipeHolder::GetTypeName() {
+  return "DataPipeHolder";
 }
 
 // static

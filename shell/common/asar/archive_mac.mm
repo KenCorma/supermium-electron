@@ -12,28 +12,28 @@
 #include <string>
 
 #include "base/apple/bundle_locations.h"
+#include "base/apple/foundation_util.h"
+#include "base/apple/scoped_cftyperef.h"
 #include "base/files/file_util.h"
 #include "base/logging.h"
-#include "base/mac/foundation_util.h"
-#include "base/mac/scoped_cftyperef.h"
 #include "base/strings/sys_string_conversions.h"
 #include "shell/common/asar/asar_util.h"
 
 namespace asar {
 
-absl::optional<base::FilePath> Archive::RelativePath() const {
+std::optional<base::FilePath> Archive::RelativePath() const {
   base::FilePath bundle_path = base::MakeAbsoluteFilePath(
       base::apple::MainBundlePath().Append("Contents"));
 
   base::FilePath relative_path;
   if (!bundle_path.AppendRelativePath(path_, &relative_path))
-    return absl::nullopt;
+    return std::nullopt;
 
   return relative_path;
 }
 
-absl::optional<IntegrityPayload> Archive::HeaderIntegrity() const {
-  absl::optional<base::FilePath> relative_path = RelativePath();
+std::optional<IntegrityPayload> Archive::HeaderIntegrity() const {
+  std::optional<base::FilePath> relative_path = RelativePath();
   // Callers should have already asserted this
   CHECK(relative_path.has_value());
 
@@ -42,15 +42,15 @@ absl::optional<IntegrityPayload> Archive::HeaderIntegrity() const {
 
   // Integrity not provided
   if (!integrity)
-    return absl::nullopt;
+    return std::nullopt;
 
   NSString* ns_relative_path =
-      base::mac::FilePathToNSString(relative_path.value());
+      base::apple::FilePathToNSString(relative_path.value());
 
   NSDictionary* integrity_payload = [integrity objectForKey:ns_relative_path];
 
   if (!integrity_payload)
-    return absl::nullopt;
+    return std::nullopt;
 
   NSString* algorithm = [integrity_payload objectForKey:@"algorithm"];
   NSString* hash = [integrity_payload objectForKey:@"hash"];
@@ -61,7 +61,7 @@ absl::optional<IntegrityPayload> Archive::HeaderIntegrity() const {
     return header_integrity;
   }
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 }  // namespace asar

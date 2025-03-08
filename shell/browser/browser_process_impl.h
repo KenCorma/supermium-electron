@@ -4,8 +4,8 @@
 
 // This interface is for managing the global services of the application. Each
 // service is lazily created when requested the first time. The service getters
-// will return NULL if the service is not available, so callers must check for
-// this condition.
+// will return nullptr if the service is not available, so callers must check
+// for this condition.
 
 #ifndef ELECTRON_SHELL_BROWSER_BROWSER_PROCESS_IMPL_H_
 #define ELECTRON_SHELL_BROWSER_BROWSER_PROCESS_IMPL_H_
@@ -31,11 +31,15 @@ namespace printing {
 class PrintJobManager;
 }
 
+namespace electron {
+class ResolveProxyHelper;
+}
+
 // Empty definition for std::unique_ptr, rather than a forward declaration
 class BackgroundModeManager {};
 
 // NOT THREAD SAFE, call only from the main thread.
-// These functions shouldn't return NULL unless otherwise noted.
+// These functions shouldn't return nullptr unless otherwise noted.
 class BrowserProcessImpl : public BrowserProcess {
  public:
   BrowserProcessImpl();
@@ -53,13 +57,15 @@ class BrowserProcessImpl : public BrowserProcess {
   void PreMainMessageLoopRun();
   void PostDestroyThreads() {}
   void PostMainMessageLoopRun();
-
   void SetSystemLocale(const std::string& locale);
   const std::string& GetSystemLocale() const;
+  electron::ResolveProxyHelper* GetResolveProxyHelper();
 
 #if BUILDFLAG(IS_LINUX)
   void SetLinuxStorageBackend(os_crypt::SelectedLinuxBackend selected_backend);
-  const std::string& GetLinuxStorageBackend() const;
+  [[nodiscard]] const std::string& linux_storage_backend() const {
+    return selected_linux_storage_backend_;
+  }
 #endif
 
   void EndSession() override {}
@@ -108,6 +114,7 @@ class BrowserProcessImpl : public BrowserProcess {
   SerialPolicyAllowedPorts* serial_policy_allowed_ports() override;
   HidSystemTrayIcon* hid_system_tray_icon() override;
   UsbSystemTrayIcon* usb_system_tray_icon() override;
+  os_crypt_async::OSCryptAsync* os_crypt_async() override;
   void CreateDevToolsProtocolHandler() override {}
   void CreateDevToolsAutoOpener() override {}
   void set_background_mode_manager_for_test(
@@ -120,8 +127,13 @@ class BrowserProcessImpl : public BrowserProcess {
   printing::PrintJobManager* print_job_manager() override;
   StartupData* startup_data() override;
 
+  ValueMapPrefStore* in_memory_pref_store() const {
+    return in_memory_pref_store_.get();
+  }
+
  private:
   void CreateNetworkQualityObserver();
+  void CreateOSCryptAsync();
   network::NetworkQualityTracker* GetNetworkQualityTracker();
 
 #if BUILDFLAG(ENABLE_PRINTING)
@@ -135,10 +147,14 @@ class BrowserProcessImpl : public BrowserProcess {
 #endif
   embedder_support::OriginTrialsSettingsStorage origin_trials_settings_storage_;
 
+  scoped_refptr<ValueMapPrefStore> in_memory_pref_store_;
+  scoped_refptr<electron::ResolveProxyHelper> resolve_proxy_helper_;
   std::unique_ptr<network::NetworkQualityTracker> network_quality_tracker_;
   std::unique_ptr<
       network::NetworkQualityTracker::RTTAndThroughputEstimatesObserver>
       network_quality_observer_;
+
+  std::unique_ptr<os_crypt_async::OSCryptAsync> os_crypt_async_;
 };
 
 #endif  // ELECTRON_SHELL_BROWSER_BROWSER_PROCESS_IMPL_H_

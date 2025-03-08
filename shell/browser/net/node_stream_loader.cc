@@ -4,6 +4,7 @@
 
 #include "shell/browser/net/node_stream_loader.h"
 
+#include <string_view>
 #include <utility>
 
 #include "mojo/public/cpp/system/string_data_source.h"
@@ -42,7 +43,7 @@ NodeStreamLoader::~NodeStreamLoader() {
   }
 
   // Destroy the stream if not already ended
-  if (!ended_) {
+  if (!destroyed_) {
     node::MakeCallback(isolate_, emitter_.Get(isolate_), "destroy", 0, nullptr,
                        {0, 0});
   }
@@ -59,14 +60,22 @@ void NodeStreamLoader::Start(network::mojom::URLResponseHeadPtr head) {
 
   producer_ = std::make_unique<mojo::DataPipeProducer>(std::move(producer));
   client_->OnReceiveResponse(std::move(head), std::move(consumer),
-                             absl::nullopt);
+                             std::nullopt);
 
   auto weak = weak_factory_.GetWeakPtr();
-  On("end",
-     base::BindRepeating(&NodeStreamLoader::NotifyComplete, weak, net::OK));
-  On("error", base::BindRepeating(&NodeStreamLoader::NotifyComplete, weak,
-                                  net::ERR_FAILED));
+  On("end", base::BindRepeating(&NodeStreamLoader::NotifyEnd, weak));
+  On("error", base::BindRepeating(&NodeStreamLoader::NotifyError, weak));
   On("readable", base::BindRepeating(&NodeStreamLoader::NotifyReadable, weak));
+}
+
+void NodeStreamLoader::NotifyEnd() {
+  destroyed_ = true;
+  NotifyComplete(net::OK);
+}
+
+void NodeStreamLoader::NotifyError() {
+  destroyed_ = true;
+  NotifyComplete(net::ERR_FAILED);
 }
 
 void NodeStreamLoader::NotifyReadable() {
@@ -80,7 +89,7 @@ void NodeStreamLoader::NotifyReadable() {
 void NodeStreamLoader::NotifyComplete(int result) {
   // Wait until write finishes or fails.
   if (is_reading_ || is_writing_) {
-    ended_ = true;
+    pending_result_ = true;
     result_ = result;
     return;
   }
@@ -120,7 +129,7 @@ void NodeStreamLoader::ReadMore() {
     }
 
     readable_ = false;
-    if (ended_) {
+    if (pending_result_) {
       NotifyComplete(result_);
     }
     return;
@@ -135,8 +144,8 @@ void NodeStreamLoader::ReadMore() {
   is_reading_ = false;
   is_writing_ = true;
   producer_->Write(std::make_unique<mojo::StringDataSource>(
-                       base::StringPiece(node::Buffer::Data(buffer),
-                                         node::Buffer::Length(buffer)),
+                       std::string_view{node::Buffer::Data(buffer),
+                                        node::Buffer::Length(buffer)},
                        mojo::StringDataSource::AsyncWritingMode::
                            STRING_STAYS_VALID_UNTIL_COMPLETION),
                    base::BindOnce(&NodeStreamLoader::DidWrite, weak));
@@ -145,7 +154,7 @@ void NodeStreamLoader::ReadMore() {
 void NodeStreamLoader::DidWrite(MojoResult result) {
   is_writing_ = false;
   // We were told to end streaming.
-  if (ended_) {
+  if (pending_result_) {
     NotifyComplete(result_);
     return;
   }

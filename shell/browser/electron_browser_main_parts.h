@@ -6,6 +6,7 @@
 #define ELECTRON_SHELL_BROWSER_ELECTRON_BROWSER_MAIN_PARTS_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "base/functional/callback.h"
@@ -16,7 +17,6 @@
 #include "electron/buildflags/buildflags.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/device/public/mojom/geolocation_control.mojom.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/display/screen.h"
 #include "ui/views/layout/layout_provider.h"
 
@@ -37,9 +37,14 @@ class Screen;
 }
 #endif
 
+namespace node {
+class Environment;
+}
+
 namespace ui {
 class LinuxUiGetter;
-}
+class DarkModeManagerLinux;
+}  // namespace ui
 
 namespace electron {
 
@@ -47,7 +52,6 @@ class Browser;
 class ElectronBindings;
 class JavascriptEnvironment;
 class NodeBindings;
-class NodeEnvironment;
 
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
 class ElectronExtensionsClient;
@@ -60,10 +64,6 @@ class ViewsDelegate;
 
 #if BUILDFLAG(IS_MAC)
 class ViewsDelegateMac;
-#endif
-
-#if BUILDFLAG(IS_LINUX)
-class DarkThemeObserver;
 #endif
 
 class ElectronBrowserMainParts : public content::BrowserMainParts {
@@ -142,9 +142,7 @@ class ElectronBrowserMainParts : public content::BrowserMainParts {
 #endif
 
 #if BUILDFLAG(IS_LINUX)
-  // Used to notify the native theme of changes to dark mode.
-  std::unique_ptr<DarkThemeObserver> dark_theme_observer_;
-
+  std::unique_ptr<ui::DarkModeManagerLinux> dark_mode_manager_;
   std::unique_ptr<ui::LinuxUiGetter> linux_ui_getter_;
 #endif
 
@@ -155,7 +153,7 @@ class ElectronBrowserMainParts : public content::BrowserMainParts {
 
   // A place to remember the exit code once the message loop is ready.
   // Before then, we just exit() without any intermediate steps.
-  absl::optional<int> exit_code_;
+  std::optional<int> exit_code_;
 
   std::unique_ptr<NodeBindings> node_bindings_;
 
@@ -166,7 +164,7 @@ class ElectronBrowserMainParts : public content::BrowserMainParts {
   std::unique_ptr<JavascriptEnvironment> js_env_;
 
   // depends-on: js_env_'s isolate
-  std::unique_ptr<NodeEnvironment> node_env_;
+  std::shared_ptr<node::Environment> node_env_;
 
   // depends-on: js_env_'s isolate
   std::unique_ptr<Browser> browser_;

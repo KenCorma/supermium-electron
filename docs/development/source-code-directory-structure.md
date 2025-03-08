@@ -3,8 +3,8 @@
 The source code of Electron is separated into a few parts, mostly
 following Chromium on the separation conventions.
 
-You may need to become familiar with [Chromium's multi-process
-architecture](https://dev.chromium.org/developers/design-documents/multi-process-architecture)
+You may need to become familiar with
+[Chromium's multi-process architecture](https://dev.chromium.org/developers/design-documents/multi-process-architecture)
 to understand the source code better.
 
 ## Structure of Source Code
@@ -78,8 +78,7 @@ Electron
 
 ## Structure of Other Directories
 
-* **.circleci** - Config file for CI with CircleCI.
-* **.github** - GitHub-specific config files including issues templates and CODEOWNERS.
+* **.github** - GitHub-specific config files including issues templates, CI with GitHub Actions and CODEOWNERS.
 * **dist** - Temporary directory created by `script/create-dist.py` script
   when creating a distribution.
 * **node_modules** - Third party node modules used for building.

@@ -17,10 +17,6 @@
 #include "ui/views/cocoa/native_widget_mac_ns_window_host.h"
 #include "ui/views/widget/native_widget_mac.h"
 
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
-
 using TitleBarStyle = electron::NativeWindowMac::TitleBarStyle;
 using FullScreenTransitionState =
     electron::NativeWindow::FullScreenTransitionState;
@@ -80,7 +76,7 @@ using FullScreenTransitionState =
 - (NSRect)windowWillUseStandardFrame:(NSWindow*)window
                         defaultFrame:(NSRect)frame {
   if (!shell_->zoom_to_page_width()) {
-    if (shell_->GetAspectRatio() > 0.0)
+    if (shell_->aspect_ratio() > 0.0)
       shell_->set_default_frame_for_zoom(frame);
     return frame;
   }
@@ -108,7 +104,7 @@ using FullScreenTransitionState =
   // Set the width. Don't touch y or height.
   frame.size.width = zoomed_width;
 
-  if (shell_->GetAspectRatio() > 0.0)
+  if (shell_->aspect_ratio() > 0.0)
     shell_->set_default_frame_for_zoom(frame);
 
   return frame;
@@ -143,13 +139,12 @@ using FullScreenTransitionState =
 
 - (NSSize)windowWillResize:(NSWindow*)sender toSize:(NSSize)frameSize {
   NSSize newSize = frameSize;
-  double aspectRatio = shell_->GetAspectRatio();
   NSWindow* window = shell_->GetNativeWindow().GetNativeNSWindow();
 
-  if (aspectRatio > 0.0) {
-    gfx::Size windowSize = shell_->GetSize();
-    gfx::Size contentSize = shell_->GetContentSize();
-    gfx::Size extraSize = shell_->GetAspectRatioExtraSize();
+  if (const double aspectRatio = shell_->aspect_ratio(); aspectRatio > 0.0) {
+    const gfx::Size windowSize = shell_->GetSize();
+    const gfx::Size contentSize = shell_->GetContentSize();
+    const gfx::Size extraSize = shell_->aspect_ratio_extra_size();
 
     double titleBarHeight = windowSize.height() - contentSize.height();
     double extraWidthPlusFrame =
@@ -262,6 +257,7 @@ using FullScreenTransitionState =
   [super windowDidMiniaturize:notification];
   is_minimized_ = true;
 
+  shell_->set_wants_to_be_visible(false);
   shell_->NotifyWindowMinimize();
 }
 
@@ -269,6 +265,7 @@ using FullScreenTransitionState =
   [super windowDidDeminiaturize:notification];
   is_minimized_ = false;
 
+  shell_->set_wants_to_be_visible(true);
   shell_->AttachChildren();
   shell_->SetWindowLevel(level_);
   shell_->NotifyWindowRestore();
@@ -307,6 +304,18 @@ using FullScreenTransitionState =
   shell_->set_fullscreen_transition_state(FullScreenTransitionState::kNone);
 
   shell_->NotifyWindowEnterFullScreen();
+
+  if (shell_->HandleDeferredClose())
+    return;
+
+  shell_->HandlePendingFullscreenTransitions();
+}
+
+- (void)windowDidFailToEnterFullScreen:(NSWindow*)window {
+  shell_->set_fullscreen_transition_state(FullScreenTransitionState::kNone);
+
+  shell_->SetResizable(is_resizable_);
+  shell_->NotifyWindowDidFailToEnterFullScreen();
 
   if (shell_->HandleDeferredClose())
     return;

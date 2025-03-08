@@ -4,18 +4,24 @@
 
 #include "shell/browser/electron_browser_main_parts.h"
 
+#include <string_view>
+
 #include "base/command_line.h"
 #include "base/environment.h"
+#include "ui/base/ozone_buildflags.h"
 #include "ui/ozone/public/ozone_switches.h"
 
-#if BUILDFLAG(OZONE_PLATFORM_WAYLAND)
+#if BUILDFLAG(IS_OZONE_WAYLAND)
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/nix/xdg_util.h"
 #include "shell/common/thread_restrictions.h"
 #endif
 
-#if BUILDFLAG(OZONE_PLATFORM_WAYLAND)
+constexpr std::string_view kElectronOzonePlatformHint{
+    "ELECTRON_OZONE_PLATFORM_HINT"};
+
+#if BUILDFLAG(IS_OZONE_WAYLAND)
 
 constexpr char kPlatformWayland[] = "wayland";
 
@@ -43,9 +49,9 @@ bool HasWaylandDisplay(base::Environment* env) {
   return false;
 }
 
-#endif  // BUILDFLAG(OZONE_PLATFORM_WAYLAND)
+#endif  // BUILDFLAG(IS_OZONE_WAYLAND)
 
-#if BUILDFLAG(OZONE_PLATFORM_X11)
+#if BUILDFLAG(IS_OZONE_X11)
 constexpr char kPlatformX11[] = "x11";
 #endif
 
@@ -61,7 +67,7 @@ namespace {
 // returns "x11" if it is not.
 // See https://crbug.com/1246928.
 std::string MaybeFixPlatformName(const std::string& ozone_platform_hint) {
-#if BUILDFLAG(OZONE_PLATFORM_WAYLAND)
+#if BUILDFLAG(IS_OZONE_WAYLAND)
   // Wayland is selected if both conditions below are true:
   // 1. The user selected either 'wayland' or 'auto'.
   // 2. The XDG session type is 'wayland', OR the user has selected 'wayland'
@@ -82,13 +88,13 @@ std::string MaybeFixPlatformName(const std::string& ozone_platform_hint) {
       return kPlatformWayland;
     }
   }
-#endif  // BUILDFLAG(OZONE_PLATFORM_WAYLAND)
+#endif  // BUILDFLAG(IS_OZONE_WAYLAND)
 
-#if BUILDFLAG(OZONE_PLATFORM_X11)
+#if BUILDFLAG(IS_OZONE_X11)
   if (ozone_platform_hint == kPlatformX11) {
     return kPlatformX11;
   }
-#if BUILDFLAG(OZONE_PLATFORM_WAYLAND)
+#if BUILDFLAG(IS_OZONE_WAYLAND)
   if (ozone_platform_hint == kPlatformWayland ||
       ozone_platform_hint == "auto") {
     // We are here if:
@@ -106,7 +112,7 @@ std::string MaybeFixPlatformName(const std::string& ozone_platform_hint) {
     }
     return kPlatformX11;
   }
-#endif  // BUILDFLAG(OZONE_PLATFORM_WAYLAND)
+#endif  // BUILDFLAG(IS_OZONE_WAYLAND)
 #endif  // BUILDFLAG(OZONE_PLATFORM_X11)
 
   return ozone_platform_hint;
@@ -115,17 +121,20 @@ std::string MaybeFixPlatformName(const std::string& ozone_platform_hint) {
 }  // namespace
 
 void ElectronBrowserMainParts::DetectOzonePlatform() {
+  auto const env = base::Environment::Create();
   auto* const command_line = base::CommandLine::ForCurrentProcess();
   if (!command_line->HasSwitch(switches::kOzonePlatform)) {
-    const auto ozone_platform_hint =
+    auto ozone_platform_hint =
         command_line->GetSwitchValueASCII(switches::kOzonePlatformHint);
+    if (ozone_platform_hint.empty()) {
+      env->GetVar(kElectronOzonePlatformHint, &ozone_platform_hint);
+    }
     if (!ozone_platform_hint.empty()) {
       command_line->AppendSwitchASCII(
           switches::kOzonePlatform, MaybeFixPlatformName(ozone_platform_hint));
     }
   }
 
-  auto env = base::Environment::Create();
   std::string desktop_startup_id;
   if (env->GetVar("DESKTOP_STARTUP_ID", &desktop_startup_id))
     command_line->AppendSwitchASCII("desktop-startup-id", desktop_startup_id);

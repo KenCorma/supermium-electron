@@ -13,10 +13,6 @@
 #include "ui/base/cocoa/base_view.h"
 #include "ui/gfx/mac/scoped_cocoa_disable_screen_updates.h"
 
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
-
 @implementation ElectronInspectableWebContentsView
 
 - (instancetype)initWithInspectableWebContentsViewMac:
@@ -31,7 +27,7 @@
   devtools_is_first_responder_ = NO;
   attached_to_window_ = NO;
 
-  if (inspectableWebContentsView_->inspectable_web_contents()->IsGuest()) {
+  if (inspectableWebContentsView_->inspectable_web_contents()->is_guest()) {
     fake_view_ = [[NSView alloc] init];
     [fake_view_ setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     [self addSubview:fake_view_];

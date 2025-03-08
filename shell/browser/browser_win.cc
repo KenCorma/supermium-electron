@@ -19,8 +19,8 @@
 #include "base/files/file_path.h"
 #include "base/logging.h"
 #include "base/path_service.h"
+#include "base/strings/strcat_win.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/win/registry.h"
 #include "base/win/win_util.h"
@@ -30,16 +30,19 @@
 #include "shell/browser/api/electron_api_app.h"
 #include "shell/browser/badging/badge_manager.h"
 #include "shell/browser/electron_browser_main_parts.h"
+#include "shell/browser/javascript_environment.h"
 #include "shell/browser/ui/message_box.h"
 #include "shell/browser/ui/win/jump_list.h"
 #include "shell/browser/window_list.h"
 #include "shell/common/application_info.h"
 #include "shell/common/gin_converters/file_path_converter.h"
 #include "shell/common/gin_converters/image_converter.h"
+#include "shell/common/gin_converters/login_item_settings_converter.h"
 #include "shell/common/gin_helper/arguments.h"
 #include "shell/common/gin_helper/dictionary.h"
 #include "shell/common/skia_util.h"
 #include "shell/common/thread_restrictions.h"
+#include "skia/ext/font_utils.h"
 #include "skia/ext/legacy_display_globals.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkFont.h"
@@ -68,11 +71,13 @@ bool GetProtocolLaunchPath(gin::Arguments* args, std::wstring* exe) {
 
   // Read in optional args arg
   std::vector<std::wstring> launch_args;
-  if (args->GetNext(&launch_args) && !launch_args.empty())
-    *exe = base::StringPrintf(L"\"%ls\" \"%ls\" \"%%1\"", exe->c_str(),
-                              base::JoinString(launch_args, L"\"  \"").c_str());
-  else
-    *exe = base::StringPrintf(L"\"%ls\" \"%%1\"", exe->c_str());
+  if (args->GetNext(&launch_args) && !launch_args.empty()) {
+    std::wstring joined_args = base::JoinString(launch_args, L"\" \"");
+    *exe = base::StrCat({L"\"", *exe, L"\" \"", joined_args, L"\" \"%1\""});
+  } else {
+    *exe = base::StrCat({L"\"", *exe, L"\" \"%1\""});
+  }
+
   return true;
 }
 
@@ -98,8 +103,8 @@ std::wstring GetAppInfoHelperForProtocol(ASSOCSTR assoc_str, const GURL& url) {
   wchar_t out_buffer[1024];
   DWORD buffer_size = std::size(out_buffer);
   HRESULT hr =
-      AssocQueryString(ASSOCF_IS_PROTOCOL, assoc_str, url_scheme.c_str(), NULL,
-                       out_buffer, &buffer_size);
+      AssocQueryString(ASSOCF_IS_PROTOCOL, assoc_str, url_scheme.c_str(),
+                       nullptr, out_buffer, &buffer_size);
   if (FAILED(hr)) {
     DLOG(WARNING) << "AssocQueryString failed!";
     return std::wstring();
@@ -140,8 +145,7 @@ bool FormatCommandLineString(std::wstring* exe,
 
   if (!launch_args.empty()) {
     std::u16string joined_launch_args = base::JoinString(launch_args, u" ");
-    *exe = base::StringPrintf(L"%ls %ls", exe->c_str(),
-                              base::as_wcstr(joined_launch_args));
+    *exe = base::StrCat({*exe, L" ", base::AsWStringView(joined_launch_args)});
   }
 
   return true;
@@ -152,12 +156,12 @@ bool FormatCommandLineString(std::wstring* exe,
 // a list of launchItem with matching paths to our application.
 // if a launchItem with a matching path also has a matching entry within the
 // startup_approved_key_path, set executable_will_launch_at_login to be `true`
-std::vector<Browser::LaunchItem> GetLoginItemSettingsHelper(
+std::vector<LaunchItem> GetLoginItemSettingsHelper(
     base::win::RegistryValueIterator* it,
     boolean* executable_will_launch_at_login,
     std::wstring scope,
-    const Browser::LoginItemSettings& options) {
-  std::vector<Browser::LaunchItem> launch_items;
+    const LoginItemSettings& options) {
+  std::vector<LaunchItem> launch_items;
 
   base::FilePath lookup_exe_path;
   if (options.path.empty()) {
@@ -181,7 +185,7 @@ std::vector<Browser::LaunchItem> GetLoginItemSettingsHelper(
 
       // add launch item to vector if it has a matching path (case-insensitive)
       if (exe_match) {
-        Browser::LaunchItem launch_item;
+        LaunchItem launch_item;
         launch_item.name = it->Name();
         launch_item.path = registry_launch_path.value();
         launch_item.args = registry_launch_cmd.GetArgs();
@@ -313,7 +317,7 @@ void GetApplicationInfoForProtocolUsingAssocQuery(
 
 void Browser::AddRecentDocument(const base::FilePath& path) {
   CComPtr<IShellItem> item;
-  HRESULT hr = SHCreateItemFromParsingName(path.value().c_str(), NULL,
+  HRESULT hr = SHCreateItemFromParsingName(path.value().c_str(), nullptr,
                                            IID_PPV_ARGS(&item));
   if (SUCCEEDED(hr)) {
     SHARDAPPIDINFO info;
@@ -410,7 +414,10 @@ bool Browser::RemoveAsDefaultProtocolClient(const std::string& protocol,
     }
 
     // If now empty, delete the whole key
-    classesKey.DeleteEmptyKey(wprotocol.c_str());
+    if (protocolKey.GetValueCount().value_or(1) == 0) {
+      classesKey.DeleteKey(wprotocol.c_str(),
+                           base::win::RegKey::RecursiveDelete(false));
+    }
 
     return true;
   } else {
@@ -512,10 +519,10 @@ v8::Local<v8::Promise> Browser::GetApplicationInfoForProtocol(
   return handle;
 }
 
-bool Browser::SetBadgeCount(absl::optional<int> count) {
-  absl::optional<std::string> badge_content;
+bool Browser::SetBadgeCount(std::optional<int> count) {
+  std::optional<std::string> badge_content;
   if (count.has_value() && count.value() == 0) {
-    badge_content = absl::nullopt;
+    badge_content = std::nullopt;
   } else {
     badge_content = badging::BadgeManager::GetBadgeString(count);
   }
@@ -556,7 +563,7 @@ bool Browser::SetBadgeCount(absl::optional<int> count) {
 
 void Browser::UpdateBadgeContents(
     HWND hwnd,
-    const absl::optional<std::string>& badge_content,
+    const std::optional<std::string>& badge_content,
     const std::string& badge_alt_string) {
   SkBitmap badge;
   if (badge_content) {
@@ -587,7 +594,7 @@ void Browser::UpdateBadgeContents(
     paint.reset();
     paint.setColor(kForegroundColor);
 
-    SkFont font;
+    SkFont font = skia::DefaultFont();
 
     SkRect bounds;
     int text_size = kMaxTextSize;
@@ -651,7 +658,7 @@ void Browser::SetLoginItemSettings(LoginItemSettings settings) {
   }
 }
 
-Browser::LoginItemSettings Browser::GetLoginItemSettings(
+v8::Local<v8::Value> Browser::GetLoginItemSettings(
     const LoginItemSettings& options) {
   LoginItemSettings settings;
   std::wstring keyPath = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -670,7 +677,7 @@ Browser::LoginItemSettings Browser::GetLoginItemSettings(
   // if there exists a launch entry with property enabled=='true',
   // set executable_will_launch_at_login to 'true'.
   boolean executable_will_launch_at_login = false;
-  std::vector<Browser::LaunchItem> launch_items;
+  std::vector<LaunchItem> launch_items;
   base::win::RegistryValueIterator hkcu_iterator(HKEY_CURRENT_USER,
                                                  keyPath.c_str());
   base::win::RegistryValueIterator hklm_iterator(HKEY_LOCAL_MACHINE,
@@ -678,16 +685,14 @@ Browser::LoginItemSettings Browser::GetLoginItemSettings(
 
   launch_items = GetLoginItemSettingsHelper(
       &hkcu_iterator, &executable_will_launch_at_login, L"user", options);
-  std::vector<Browser::LaunchItem> launch_items_hklm =
-      GetLoginItemSettingsHelper(&hklm_iterator,
-                                 &executable_will_launch_at_login, L"machine",
-                                 options);
+  std::vector<LaunchItem> launch_items_hklm = GetLoginItemSettingsHelper(
+      &hklm_iterator, &executable_will_launch_at_login, L"machine", options);
   launch_items.insert(launch_items.end(), launch_items_hklm.begin(),
                       launch_items_hklm.end());
 
   settings.executable_will_launch_at_login = executable_will_launch_at_login;
   settings.launch_items = launch_items;
-  return settings;
+  return gin::ConvertToV8(JavascriptEnvironment::GetIsolate(), settings);
 }
 
 PCWSTR Browser::GetAppUserModelID() {

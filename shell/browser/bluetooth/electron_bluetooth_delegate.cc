@@ -161,7 +161,7 @@ void ElectronBluetoothDelegate::ShowDevicePairPrompt(
     const std::u16string& device_identifier,
     PairPromptCallback callback,
     PairingKind pairing_kind,
-    const absl::optional<std::u16string>& pin) {
+    const std::optional<std::u16string>& pin) {
   auto* web_contents = content::WebContents::FromRenderFrameHost(frame);
   if (web_contents) {
     auto* permission_manager = static_cast<ElectronPermissionManager*>(
@@ -169,8 +169,7 @@ void ElectronBluetoothDelegate::ShowDevicePairPrompt(
 
     v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
     v8::HandleScope scope(isolate);
-    gin_helper::Dictionary details =
-        gin_helper::Dictionary::CreateEmpty(isolate);
+    auto details = gin_helper::Dictionary::CreateEmpty(isolate);
     details.Set("deviceId", device_identifier);
     details.Set("pairingKind", pairing_kind);
     details.SetGetter("frame", frame);

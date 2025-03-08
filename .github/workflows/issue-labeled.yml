@@ -14,23 +14,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App token
+        uses: electron/github-app-auth-action@384fd19694fe7b6dcc9a684746c6976ad78228ae # v1.1.1
         id: generate-token
-        env:
-          RELEASE_BOARD_GH_APP_CREDS: ${{ secrets.RELEASE_BOARD_GH_APP_CREDS }}
-        run: |
-          set -eo pipefail
-          TOKEN=$(npx @electron/github-app-auth --creds=$RELEASE_BOARD_GH_APP_CREDS --org=electron)
-          echo "TOKEN=$TOKEN" >> "$GITHUB_OUTPUT"
-      - name: Set status
-        if: ${{ steps.generate-token.outputs.TOKEN }}
-        uses: github/update-project-action@2d475e08804f11f4022df7e21f5816531e97cb64 # v2
         with:
-          github_token: ${{ steps.generate-token.outputs.TOKEN }}
-          organization: electron
-          project_number: 90
-          content_id: ${{ github.event.issue.node_id }}
+          creds: ${{ secrets.ISSUE_TRIAGE_GH_APP_CREDS }}
+          org: electron
+      - name: Set status
+        uses: dsanders11/project-actions/edit-item@82e99438bd44a14ad18d92d036dbc25cbfb9a8c4 # v1.2.0
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          project-number: 90
           field: Status
-          value: 🛑 Blocked
+          field-value: 🛑 Blocked
   issue-labeled-blocked-need-repro:
     name: blocked/need-repro label added
     if: github.event.label.name == 'blocked/need-repro'
@@ -45,15 +40,22 @@ jobs:
           GH_REPO: electron/electron
         run: |
           set -eo pipefail
-          COMMENT_COUNT=$(gh issue view ${{ github.event.issue.number }} --comments --json comments | jq '[ .comments[] | select(.author.login == "github-actions" or .authorAssociation == "OWNER" or .authorAssociation == "MEMBER") | select(.body | startswith("<!-- blocked/need-repro -->")) ] | length')
+          COMMENT_COUNT=$(gh issue view ${{ github.event.issue.number }} --comments --json comments | jq '[ .comments[] | select(.author.login == "electron-issue-triage" or .authorAssociation == "OWNER" or .authorAssociation == "MEMBER") | select(.body | startswith("<!-- blocked/need-repro -->")) ] | length')
           if [[ $COMMENT_COUNT -eq 0 ]]; then
             echo "SHOULD_COMMENT=1" >> "$GITHUB_OUTPUT"
           fi
+      - name: Generate GitHub App token
+        if: ${{ steps.check-for-comment.outputs.SHOULD_COMMENT }}
+        uses: electron/github-app-auth-action@384fd19694fe7b6dcc9a684746c6976ad78228ae # v1.1.1
+        id: generate-token
+        with:
+          creds: ${{ secrets.ISSUE_TRIAGE_GH_APP_CREDS }}
       - name: Create comment
         if: ${{ steps.check-for-comment.outputs.SHOULD_COMMENT }}
         uses: actions-cool/issues-helper@275328970dbc3bfc3bc43f5fe741bf3638300c0a # v3.3.3
         with:
           actions: 'create-comment'
+          token: ${{ steps.generate-token.outputs.token }}
           body: |
             <!-- blocked/need-repro -->
 

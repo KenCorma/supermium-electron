@@ -18,7 +18,7 @@ namespace electron {
 
 class TrayIcon {
  public:
-  static TrayIcon* Create(absl::optional<UUID> guid);
+  static TrayIcon* Create(std::optional<UUID> guid);
 
 #if BUILDFLAG(IS_WIN)
   using ImageType = HICON;
@@ -106,6 +106,7 @@ class TrayIcon {
                      const gfx::Point& location = gfx::Point(),
                      int modifiers = 0);
   void NotifyDoubleClicked(const gfx::Rect& = gfx::Rect(), int modifiers = 0);
+  void NotifyMiddleClicked(const gfx::Rect& = gfx::Rect(), int modifiers = 0);
   void NotifyBalloonShow();
   void NotifyBalloonClicked();
   void NotifyBalloonClosed();

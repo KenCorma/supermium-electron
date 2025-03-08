@@ -192,11 +192,8 @@ void AutofillPopup::CreateView(content::RenderFrameHost* frame_host,
   view_ = new AutofillPopupView(this, parent->GetWidget());
 
   if (offscreen) {
-    auto* rwhv = frame_host->GetView();
-    if (embedder_frame_host != nullptr) {
-      rwhv = embedder_frame_host->GetView();
-    }
-
+    auto* rwhv = embedder_frame_host ? embedder_frame_host->GetView()
+                                     : frame_host->GetView();
     auto* osr_rwhv = static_cast<OffScreenRenderWidgetHostView*>(rwhv);
     view_->view_proxy_ = std::make_unique<OffscreenViewProxy>(view_);
     osr_rwhv->AddViewProxy(view_->view_proxy_.get());
@@ -231,7 +228,7 @@ void AutofillPopup::SetItems(const std::vector<std::u16string>& values,
 void AutofillPopup::AcceptSuggestion(int index) {
   mojo::AssociatedRemote<mojom::ElectronAutofillAgent> autofill_agent;
   frame_host_->GetRemoteAssociatedInterfaces()->GetInterface(&autofill_agent);
-  autofill_agent->AcceptDataListSuggestion(GetValueAt(index));
+  autofill_agent->AcceptDataListSuggestion(value_at(index));
 }
 
 void AutofillPopup::UpdatePopupBounds() {
@@ -272,11 +269,10 @@ int AutofillPopup::GetDesiredPopupWidth() {
   int popup_width = element_bounds_.width();
 
   for (size_t i = 0; i < values_.size(); ++i) {
-    int row_size =
-        kEndPadding + 2 * kPopupBorderThickness +
-        gfx::GetStringWidth(GetValueAt(i), GetValueFontListForRow(i)) +
-        gfx::GetStringWidth(GetLabelAt(i), GetLabelFontListForRow(i));
-    if (!GetLabelAt(i).empty())
+    int row_size = kEndPadding + 2 * kPopupBorderThickness +
+                   gfx::GetStringWidth(value_at(i), GetValueFontListForRow(i)) +
+                   gfx::GetStringWidth(label_at(i), GetLabelFontListForRow(i));
+    if (!label_at(i).empty())
       row_size += kNamePadding + kEndPadding;
 
     popup_width = std::max(popup_width, row_size);
@@ -305,18 +301,6 @@ ui::ColorId AutofillPopup::GetBackgroundColorIDForRow(int index) const {
   return (view_ && index == view_->GetSelectedLine())
              ? ui::kColorResultsTableHoveredBackground
              : ui::kColorResultsTableNormalBackground;
-}
-
-int AutofillPopup::GetLineCount() {
-  return values_.size();
-}
-
-std::u16string AutofillPopup::GetValueAt(int i) {
-  return values_.at(i);
-}
-
-std::u16string AutofillPopup::GetLabelAt(int i) {
-  return labels_.at(i);
 }
 
 int AutofillPopup::LineFromY(int y) const {

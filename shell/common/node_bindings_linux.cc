@@ -10,7 +10,9 @@ namespace electron {
 
 NodeBindingsLinux::NodeBindingsLinux(BrowserEnvironment browser_env)
     : NodeBindings(browser_env), epoll_(epoll_create(1)) {
-  int backend_fd = uv_backend_fd(uv_loop_);
+  auto* const event_loop = uv_loop();
+
+  int backend_fd = uv_backend_fd(event_loop);
   struct epoll_event ev = {0};
   ev.events = EPOLLIN;
   ev.data.fd = backend_fd;
@@ -18,7 +20,9 @@ NodeBindingsLinux::NodeBindingsLinux(BrowserEnvironment browser_env)
 }
 
 void NodeBindingsLinux::PollEvents() {
-  int timeout = uv_backend_timeout(uv_loop_);
+  auto* const event_loop = uv_loop();
+
+  int timeout = uv_backend_timeout(event_loop);
 
   // Wait for new libuv events.
   int r;
@@ -29,8 +33,8 @@ void NodeBindingsLinux::PollEvents() {
 }
 
 // static
-NodeBindings* NodeBindings::Create(BrowserEnvironment browser_env) {
-  return new NodeBindingsLinux(browser_env);
+std::unique_ptr<NodeBindings> NodeBindings::Create(BrowserEnvironment env) {
+  return std::make_unique<NodeBindingsLinux>(env);
 }
 
 }  // namespace electron

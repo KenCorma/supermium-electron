@@ -284,7 +284,7 @@ const escapeItemSymbol = Symbol('escape item');
 
 class TouchBar extends EventEmitter implements Electron.TouchBar {
   // Bind a touch bar to a window
-  static _setOnWindow (touchBar: TouchBar | Electron.TouchBarConstructorOptions['items'], window: Electron.BrowserWindow) {
+  static _setOnWindow (touchBar: TouchBar | Electron.TouchBarConstructorOptions['items'], window: Electron.BaseWindow) {
     if (window._touchBar != null) {
       window._touchBar._removeFromWindow(window);
     }
@@ -323,13 +323,15 @@ class TouchBar extends EventEmitter implements Electron.TouchBar {
       this.items.set(item.id, item);
       item.on('change', this.changeListener);
       if (item.child instanceof TouchBar) {
-        item.child.orderedItems.forEach(registerItem);
+        for (const child of item.child.orderedItems) {
+          registerItem(child);
+        }
       }
     };
 
     let hasOtherItemsProxy = false;
     const idSet = new Set();
-    items.forEach((item) => {
+    for (const item of items) {
       if (!(item instanceof TouchBarItem)) {
         throw new TypeError('Each item must be an instance of TouchBarItem');
       }
@@ -347,7 +349,7 @@ class TouchBar extends EventEmitter implements Electron.TouchBar {
       } else {
         throw new Error('Cannot add a single instance of TouchBarItem multiple times in a TouchBar');
       }
-    });
+    }
 
     // register in separate loop after all items are validated
     for (const item of (items as TouchBarItem<any>[])) {
@@ -381,7 +383,7 @@ class TouchBar extends EventEmitter implements Electron.TouchBar {
     return this[escapeItemSymbol];
   }
 
-  _addToWindow (window: Electron.BrowserWindow) {
+  _addToWindow (window: Electron.BaseWindow) {
     const { id } = window;
 
     // Already added to window
@@ -437,7 +439,7 @@ class TouchBar extends EventEmitter implements Electron.TouchBar {
     escapeItemListener(this.escapeItem);
   }
 
-  _removeFromWindow (window: Electron.BrowserWindow) {
+  _removeFromWindow (window: Electron.BaseWindow) {
     const removeListeners = this.windowListeners.get(window.id);
     if (removeListeners != null) removeListeners();
   }

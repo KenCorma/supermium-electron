@@ -2,7 +2,7 @@
 
 > Issue HTTP/HTTPS requests using Chromium's native networking library
 
-Process: [Main](../glossary.md#main-process)
+Process: [Main](../glossary.md#main-process), [Utility](../glossary.md#utility-process)
 
 The `net` module is a client-side API for issuing HTTP(S) requests. It is
 similar to the [HTTP](https://nodejs.org/api/http.html) and
@@ -26,7 +26,7 @@ Node.js.
 
 Example usage:
 
-```javascript
+```js
 const { app } = require('electron')
 app.whenReady().then(() => {
   const { net } = require('electron')
@@ -66,7 +66,7 @@ requests according to the specified protocol scheme in the `options` object.
 ### `net.fetch(input[, init])`
 
 * `input` string | [GlobalRequest](https://nodejs.org/api/globals.html#request)
-* `init` [RequestInit](https://developer.mozilla.org/en-US/docs/Web/API/fetch#options) & { bypassCustomProtocolHandlers?: boolean } (optional)
+* `init` [RequestInit](https://developer.mozilla.org/en-US/docs/Web/API/fetch#options) & \{ bypassCustomProtocolHandlers?: boolean \} (optional)
 
 Returns `Promise<GlobalResponse>` - see [Response](https://developer.mozilla.org/en-US/docs/Web/API/Response).
 
@@ -86,9 +86,8 @@ async function example () {
 }
 ```
 
-This method will issue requests from the [default
-session](session.md#sessiondefaultsession). To send a `fetch` request from
-another session, use [ses.fetch()](session.md#sesfetchinput-init).
+This method will issue requests from the [default session](session.md#sessiondefaultsession).
+To send a `fetch` request from another session, use [ses.fetch()](session.md#sesfetchinput-init).
 
 See the MDN documentation for
 [`fetch()`](https://developer.mozilla.org/en-US/docs/Web/API/fetch) for more
@@ -101,11 +100,10 @@ Limitations:
 * The `.type` and `.url` values of the returned `Response` object are
   incorrect.
 
-By default, requests made with `net.fetch` can be made to [custom
-protocols](protocol.md) as well as `file:`, and will trigger
-[webRequest](web-request.md) handlers if present. When the non-standard
-`bypassCustomProtocolHandlers` option is set in RequestInit, custom protocol
-handlers will not be called for this request. This allows forwarding an
+By default, requests made with `net.fetch` can be made to [custom protocols](protocol.md)
+as well as `file:`, and will trigger [webRequest](web-request.md) handlers if present.
+When the non-standard `bypassCustomProtocolHandlers` option is set in RequestInit,
+custom protocol handlers will not be called for this request. This allows forwarding an
 intercepted request to the built-in handler. [webRequest](web-request.md)
 handlers will still be triggered when bypassing custom protocols.
 
@@ -118,6 +116,9 @@ protocol.handle('https', (req) => {
   }
 })
 ```
+
+Note: in the [utility process](../glossary.md#utility-process) custom protocols
+are not supported.
 
 ### `net.isOnline()`
 
@@ -164,9 +165,8 @@ will be successful.
 
 Returns [`Promise<ResolvedHost>`](structures/resolved-host.md) - Resolves with the resolved IP addresses for the `host`.
 
-This method will resolve hosts from the [default
-session](session.md#sessiondefaultsession). To resolve a host from
-another session, use [ses.resolveHost()](session.md#sesresolvehosthost-options).
+This method will resolve hosts from the [default session](session.md#sessiondefaultsession).
+To resolve a host from another session, use [ses.resolveHost()](session.md#sesresolvehosthost-options).
 
 ## Properties
 

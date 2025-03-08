@@ -9,9 +9,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "base/apple/osstatus_logging.h"
 #include "base/files/file_util.h"
 #include "base/logging.h"
-#include "base/mac/mac_logging.h"
 #include "base/posix/eintr_wrapper.h"
 #include "base/process/launch.h"
 #include "base/strings/sys_string_conversions.h"
@@ -40,7 +40,7 @@ void RelauncherSynchronizeWithParent() {
   }
 
   struct kevent change = {0};
-  EV_SET(&change, parent_pid, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, NULL);
+  EV_SET(&change, parent_pid, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, nullptr);
   if (kevent(kq.get(), &change, 1, nullptr, 0, nullptr) == -1) {
     PLOG(ERROR) << "kevent (add)";
     return;

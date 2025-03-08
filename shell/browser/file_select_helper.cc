@@ -77,16 +77,9 @@ FileSelectHelper::~FileSelectHelper() {
     select_file_dialog_->ListenerDestroyed();
 }
 
-void FileSelectHelper::FileSelected(const base::FilePath& path,
+void FileSelectHelper::FileSelected(const ui::SelectedFileInfo& file,
                                     int index,
                                     void* params) {
-  FileSelectedWithExtraInfo(ui::SelectedFileInfo(path, path), index, params);
-}
-
-void FileSelectHelper::FileSelectedWithExtraInfo(
-    const ui::SelectedFileInfo& file,
-    int index,
-    void* params) {
   if (!render_frame_host_) {
     RunFileChooserEnd();
     return;
@@ -101,26 +94,10 @@ void FileSelectHelper::FileSelectedWithExtraInfo(
   std::vector<ui::SelectedFileInfo> files;
   files.push_back(file);
 
-#if BUILDFLAG(IS_MAC)
-  base::ThreadPool::PostTask(
-      FROM_HERE,
-      {base::MayBlock(), base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN},
-      base::BindOnce(&FileSelectHelper::ProcessSelectedFilesMac, this, files));
-#else
-  ConvertToFileChooserFileInfoList(files);
-#endif  // BUILDFLAG(IS_MAC)
+  MultiFilesSelected(files, params);
 }
 
 void FileSelectHelper::MultiFilesSelected(
-    const std::vector<base::FilePath>& files,
-    void* params) {
-  std::vector<ui::SelectedFileInfo> selected_files =
-      ui::FilePathListToSelectedFileInfoList(files);
-
-  MultiFilesSelectedWithExtraInfo(selected_files, params);
-}
-
-void FileSelectHelper::MultiFilesSelectedWithExtraInfo(
     const std::vector<ui::SelectedFileInfo>& files,
     void* params) {
 #if BUILDFLAG(IS_MAC)
@@ -460,7 +437,7 @@ void FileSelectHelper::RunFileChooserOnUIThread(
           ? 1
           : 0,  // 1-based index of default extension to show.
       base::FilePath::StringType(),
-      web_contents->owner_window()->GetNativeWindow(), NULL);
+      web_contents->owner_window()->GetNativeWindow(), nullptr);
 
   select_file_types_.reset();
 }

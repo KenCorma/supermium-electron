@@ -77,7 +77,6 @@ class IPCRenderer : public gin::Wrappable<IPCRenderer>,
     return gin::Wrappable<IPCRenderer>::GetObjectTemplateBuilder(isolate)
         .SetMethod("send", &IPCRenderer::SendMessage)
         .SetMethod("sendSync", &IPCRenderer::SendSync)
-        .SetMethod("sendTo", &IPCRenderer::SendTo)
         .SetMethod("sendToHost", &IPCRenderer::SendToHost)
         .SetMethod("invoke", &IPCRenderer::Invoke)
         .SetMethod("postMessage", &IPCRenderer::PostMessage);
@@ -132,7 +131,7 @@ class IPCRenderer : public gin::Wrappable<IPCRenderer>,
                    gin_helper::ErrorThrower thrower,
                    const std::string& channel,
                    v8::Local<v8::Value> message_value,
-                   absl::optional<v8::Local<v8::Value>> transfer) {
+                   std::optional<v8::Local<v8::Value>> transfer) {
     if (!electron_ipc_remote_) {
       thrower.ThrowError(kIPCMethodCalledAfterContextReleasedError);
       return;
@@ -154,7 +153,7 @@ class IPCRenderer : public gin::Wrappable<IPCRenderer>,
 
     std::vector<blink::MessagePortChannel> ports;
     for (auto& transferable : transferables) {
-      absl::optional<blink::MessagePortChannel> port =
+      std::optional<blink::MessagePortChannel> port =
           blink::WebMessagePortConverter::
               DisentangleAndExtractMessagePortChannel(isolate, transferable);
       if (!port.has_value()) {
@@ -167,23 +166,6 @@ class IPCRenderer : public gin::Wrappable<IPCRenderer>,
     transferable_message.ports = std::move(ports);
     electron_ipc_remote_->ReceivePostMessage(channel,
                                              std::move(transferable_message));
-  }
-
-  void SendTo(v8::Isolate* isolate,
-              gin_helper::ErrorThrower thrower,
-              int32_t web_contents_id,
-              const std::string& channel,
-              v8::Local<v8::Value> arguments) {
-    if (!electron_ipc_remote_) {
-      thrower.ThrowError(kIPCMethodCalledAfterContextReleasedError);
-      return;
-    }
-    blink::CloneableMessage message;
-    if (!electron::SerializeV8Value(isolate, arguments, &message)) {
-      return;
-    }
-    electron_ipc_remote_->MessageTo(web_contents_id, channel,
-                                    std::move(message));
   }
 
   void SendToHost(v8::Isolate* isolate,

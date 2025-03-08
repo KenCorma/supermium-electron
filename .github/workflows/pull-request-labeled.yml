@@ -1,33 +1,41 @@
 name: Pull Request Labeled
 
 on:
-  pull_request:
+  pull_request_target:
     types: [labeled]
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
+  pull-request-labeled-backport-requested:
+    name: backport/requested label added
+    if: github.event.label.name == 'backport/requested 🗳'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Slack workflow
+        uses: slackapi/slack-github-action@6c661ce58804a1a20f6dc5fbee7f0381b469e001 # v1.25.0
+        with:
+          payload: |
+            {
+              "url": "${{ github.event.pull_request.html_url }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.BACKPORT_REQUESTED_SLACK_WEBHOOK_URL }}
   pull-request-labeled-deprecation-review-complete:
     name: deprecation-review/complete label added
     if: github.event.label.name == 'deprecation-review/complete ✅'
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App token
+        uses: electron/github-app-auth-action@384fd19694fe7b6dcc9a684746c6976ad78228ae # v1.1.1
         id: generate-token
-        env:
-          RELEASE_BOARD_GH_APP_CREDS: ${{ secrets.RELEASE_BOARD_GH_APP_CREDS }}
-        run: |
-          set -eo pipefail
-          TOKEN=$(npx @electron/github-app-auth --creds=$RELEASE_BOARD_GH_APP_CREDS --org=electron)
-          echo "TOKEN=$TOKEN" >> "$GITHUB_OUTPUT"
-      - name: Set status
-        if: ${{ steps.generate-token.outputs.TOKEN }}
-        uses: github/update-project-action@2d475e08804f11f4022df7e21f5816531e97cb64 # v2
         with:
-          github_token: ${{ steps.generate-token.outputs.TOKEN }}
-          organization: electron
-          project_number: 94
-          content_id: ${{ github.event.pull_request.node_id }}
+          creds: ${{ secrets.RELEASE_BOARD_GH_APP_CREDS }}
+          org: electron
+      - name: Set status
+        uses: dsanders11/project-actions/edit-item@82e99438bd44a14ad18d92d036dbc25cbfb9a8c4 # v1.2.0
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          project-number: 94
           field: Status
-          value: ✅ Reviewed
+          field-value: ✅ Reviewed

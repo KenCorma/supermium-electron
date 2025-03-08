@@ -10,10 +10,11 @@
 #include <utility>
 
 #include "base/allocator/partition_alloc_features.h"
-#include "base/allocator/partition_allocator/partition_alloc.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/partition_alloc.h"
 #include "base/bits.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
+#include "base/no_destructor.h"
 #include "base/task/current_thread.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool/initialization_util.h"
@@ -119,7 +120,6 @@ JavascriptEnvironment::JavascriptEnvironment(uv_loop_t* event_loop,
 
 JavascriptEnvironment::~JavascriptEnvironment() {
   DCHECK_NE(platform_, nullptr);
-  platform_->DrainTasks(isolate_);
 
   {
     v8::HandleScope scope(isolate_);
@@ -183,9 +183,6 @@ class EnabledStateObserverImpl final
   base::Lock mutex_;
   std::unordered_set<v8::TracingController::TraceStateObserver*> observers_;
 };
-
-base::LazyInstance<EnabledStateObserverImpl>::Leaky g_trace_state_dispatcher =
-    LAZY_INSTANCE_INITIALIZER;
 
 class TracingControllerImpl : public node::tracing::TracingController {
  public:
@@ -265,24 +262,29 @@ class TracingControllerImpl : public node::tracing::TracingController {
     TRACE_EVENT_API_UPDATE_TRACE_EVENT_DURATION(category_enabled_flag, name,
                                                 traceEventHandle);
   }
+
   void AddTraceStateObserver(TraceStateObserver* observer) override {
-    g_trace_state_dispatcher.Get().AddObserver(observer);
+    GetObserverDelegate().AddObserver(observer);
   }
+
   void RemoveTraceStateObserver(TraceStateObserver* observer) override {
-    g_trace_state_dispatcher.Get().RemoveObserver(observer);
+    GetObserverDelegate().RemoveObserver(observer);
+  }
+
+ private:
+  static EnabledStateObserverImpl& GetObserverDelegate() {
+    static base::NoDestructor<EnabledStateObserverImpl> instance;
+    return *instance;
   }
 };
 
 v8::Isolate* JavascriptEnvironment::Initialize(uv_loop_t* event_loop,
                                                bool setup_wasm_streaming) {
   auto* cmd = base::CommandLine::ForCurrentProcess();
-
   // --js-flags.
-  std::string js_flags =
-      cmd->GetSwitchValueASCII(blink::switches::kJavaScriptFlags);
-  js_flags.append(" --no-freeze-flags-after-init");
-  if (!js_flags.empty())
-    v8::V8::SetFlagsFromString(js_flags.c_str(), js_flags.size());
+  std::string js_flags = "--no-freeze-flags-after-init ";
+  js_flags.append(cmd->GetSwitchValueASCII(blink::switches::kJavaScriptFlags));
+  v8::V8::SetFlagsFromString(js_flags.c_str(), js_flags.size());
 
   // The V8Platform of gin relies on Chromium's task schedule, which has not
   // been started at this point, so we have to rely on Node's V8Platform.
@@ -338,14 +340,6 @@ void JavascriptEnvironment::DestroyMicrotasksRunner() {
     gin_helper::CleanedUpAtExit::DoCleanup();
   }
   base::CurrentThread::Get()->RemoveTaskObserver(microtasks_runner_.get());
-}
-
-NodeEnvironment::NodeEnvironment(node::Environment* env) : env_(env) {}
-
-NodeEnvironment::~NodeEnvironment() {
-  auto* isolate_data = env_->isolate_data();
-  node::FreeEnvironment(env_);
-  node::FreeIsolateData(isolate_data);
 }
 
 }  // namespace electron

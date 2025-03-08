@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-from __future__ import print_function
-
 import argparse
 import hashlib
 import json
@@ -14,7 +12,9 @@ from lib.patches import patch_from_dir
 
 
 def patched_file_paths(patches_config):
-    for patch_dir, repo in patches_config.items():
+    for target in patches_config:
+        patch_dir = target.get('patch_dir')
+        repo = target.get('repo')
         for line in patch_from_dir(patch_dir).split("\n"):
             if line.startswith("+++"):
                 yield posixpath.join(repo, line[6:])
@@ -168,13 +168,7 @@ def main():
             traceback.print_exc(file=sys.stderr)
             return 0
     elif args.operation == "set":
-        # Python 2/3 compatibility
-        try:
-            user_input = raw_input
-        except NameError:
-            user_input = input
-
-        answer = user_input(
+        answer = input(
             "WARNING: Manually setting mtimes could mess up your build. "
             "If you're sure, type yes: "
         )

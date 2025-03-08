@@ -2,96 +2,34 @@ import { expect } from 'chai';
 import * as cp from 'node:child_process';
 import * as http from 'node:http';
 import * as express from 'express';
-import * as fs from 'fs-extra';
-import * as os from 'node:os';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as psList from 'ps-list';
 import { AddressInfo } from 'node:net';
 import { ifdescribe, ifit } from './lib/spec-helpers';
+import { copyMacOSFixtureApp, getCodesignIdentity, shouldRunCodesignTests, signApp, spawn } from './lib/codesign-helpers';
 import * as uuid from 'uuid';
-import { systemPreferences } from 'electron';
-
-const features = process._linkedBinding('electron_common_features');
-
-const fixturesPath = path.resolve(__dirname, 'fixtures');
+import { autoUpdater, systemPreferences } from 'electron';
+import { withTempDirectory } from './lib/fs-helpers';
 
 // We can only test the auto updater on darwin non-component builds
-ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch === 'arm64') && !process.mas && !features.isComponentBuild())('autoUpdater behavior', function () {
+ifdescribe(shouldRunCodesignTests)('autoUpdater behavior', function () {
   this.timeout(120000);
 
   let identity = '';
 
   beforeEach(function () {
-    const result = cp.spawnSync(path.resolve(__dirname, '../script/codesign/get-trusted-identity.sh'));
-    if (result.status !== 0 || result.stdout.toString().trim().length === 0) {
-      // Per https://circleci.com/docs/2.0/env-vars:
-      // CIRCLE_PR_NUMBER is only present on forked PRs
-      if (process.env.CI && !process.env.CIRCLE_PR_NUMBER) {
-        throw new Error('No valid signing identity available to run autoUpdater specs');
-      }
-
+    const result = getCodesignIdentity();
+    if (result === null) {
       this.skip();
     } else {
-      identity = result.stdout.toString().trim();
+      identity = result;
     }
   });
 
   it('should have a valid code signing identity', () => {
     expect(identity).to.be.a('string').with.lengthOf.at.least(1);
   });
-
-  const copyApp = async (newDir: string, fixture = 'initial') => {
-    const appBundlePath = path.resolve(process.execPath, '../../..');
-    const newPath = path.resolve(newDir, 'Electron.app');
-    cp.spawnSync('cp', ['-R', appBundlePath, path.dirname(newPath)]);
-    const appDir = path.resolve(newPath, 'Contents/Resources/app');
-    await fs.mkdirp(appDir);
-    await fs.copy(path.resolve(fixturesPath, 'auto-update', fixture), appDir);
-    const plistPath = path.resolve(newPath, 'Contents', 'Info.plist');
-    await fs.writeFile(
-      plistPath,
-      (await fs.readFile(plistPath, 'utf8')).replace('<key>BuildMachineOSBuild</key>', `<key>NSAppTransportSecurity</key>
-      <dict>
-          <key>NSAllowsArbitraryLoads</key>
-          <true/>
-          <key>NSExceptionDomains</key>
-          <dict>
-              <key>localhost</key>
-              <dict>
-                  <key>NSExceptionAllowsInsecureHTTPLoads</key>
-                  <true/>
-                  <key>NSIncludesSubdomains</key>
-                  <true/>
-              </dict>
-          </dict>
-      </dict><key>BuildMachineOSBuild</key>`)
-    );
-    return newPath;
-  };
-
-  const spawn = (cmd: string, args: string[], opts: any = {}) => {
-    let out = '';
-    const child = cp.spawn(cmd, args, opts);
-    child.stdout.on('data', (chunk: Buffer) => {
-      out += chunk.toString();
-    });
-    child.stderr.on('data', (chunk: Buffer) => {
-      out += chunk.toString();
-    });
-    return new Promise<{ code: number, out: string }>((resolve) => {
-      child.on('exit', (code, signal) => {
-        expect(signal).to.equal(null);
-        resolve({
-          code: code!,
-          out
-        });
-      });
-    });
-  };
-
-  const signApp = (appPath: string) => {
-    return spawn('codesign', ['-s', identity, '--deep', '--force', appPath]);
-  };
 
   const launchApp = (appPath: string, args: string[] = []) => {
     return spawn(path.resolve(appPath, 'Contents/MacOS/Electron'), args);
@@ -107,17 +45,6 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
     return activeShipIts;
   };
 
-  const withTempDirectory = async (fn: (dir: string) => Promise<void>, autoCleanUp = true) => {
-    const dir = await fs.mkdtemp(path.resolve(os.tmpdir(), 'electron-update-spec-'));
-    try {
-      await fn(dir);
-    } finally {
-      if (autoCleanUp) {
-        cp.spawnSync('rm', ['-r', dir]);
-      }
-    }
-  };
-
   const logOnError = (what: any, fn: () => void) => {
     try {
       fn();
@@ -129,21 +56,29 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
 
   const cachedZips: Record<string, string> = {};
 
-  const getOrCreateUpdateZipPath = async (version: string, fixture: string, mutateAppPostSign?: {
+  type Mutation = {
     mutate: (appPath: string) => Promise<void>,
     mutationKey: string,
-  }) => {
-    const key = `${version}-${fixture}-${mutateAppPostSign?.mutationKey || 'no-mutation'}`;
+  };
+
+  const getOrCreateUpdateZipPath = async (version: string, fixture: string, mutateAppPreSign?: Mutation, mutateAppPostSign?: Mutation) => {
+    const key = `${version}-${fixture}-${mutateAppPreSign?.mutationKey || 'no-pre-mutation'}-${mutateAppPostSign?.mutationKey || 'no-post-mutation'}`;
     if (!cachedZips[key]) {
       let updateZipPath: string;
       await withTempDirectory(async (dir) => {
-        const secondAppPath = await copyApp(dir, fixture);
+        const secondAppPath = await copyMacOSFixtureApp(dir, fixture);
         const appPJPath = path.resolve(secondAppPath, 'Contents', 'Resources', 'app', 'package.json');
-        await fs.writeFile(
+        await fs.promises.writeFile(
           appPJPath,
-          (await fs.readFile(appPJPath, 'utf8')).replace('1.0.0', version)
+          (await fs.promises.readFile(appPJPath, 'utf8')).replace('1.0.0', version)
         );
-        await signApp(secondAppPath);
+        const infoPath = path.resolve(secondAppPath, 'Contents', 'Info.plist');
+        await fs.promises.writeFile(
+          infoPath,
+          (await fs.promises.readFile(infoPath, 'utf8')).replace(/(<key>CFBundleShortVersionString<\/key>\s+<string>)[^<]+/g, `$1${version}`)
+        );
+        await mutateAppPreSign?.mutate(secondAppPath);
+        await signApp(secondAppPath, identity);
         await mutateAppPostSign?.mutate(secondAppPath);
         updateZipPath = path.resolve(dir, 'update.zip');
         await spawn('zip', ['-0', '-r', '--symlinks', updateZipPath, './'], {
@@ -164,7 +99,7 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
   // On arm64 builds the built app is self-signed by default so the setFeedURL call always works
   ifit(process.arch !== 'arm64')('should fail to set the feed URL when the app is not signed', async () => {
     await withTempDirectory(async (dir) => {
-      const appPath = await copyApp(dir);
+      const appPath = await copyMacOSFixtureApp(dir);
       const launchResult = await launchApp(appPath, ['http://myupdate']);
       console.log(launchResult);
       expect(launchResult.code).to.equal(1);
@@ -174,8 +109,8 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
 
   it('should cleanly set the feed URL when the app is signed', async () => {
     await withTempDirectory(async (dir) => {
-      const appPath = await copyApp(dir);
-      await signApp(appPath);
+      const appPath = await copyMacOSFixtureApp(dir);
+      await signApp(appPath, identity);
       const launchResult = await launchApp(appPath, ['http://myupdate']);
       expect(launchResult.code).to.equal(0);
       expect(launchResult.out).to.include('Feed URL Set: http://myupdate');
@@ -215,8 +150,8 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
 
     it('should hit the update endpoint when checkForUpdates is called', async () => {
       await withTempDirectory(async (dir) => {
-        const appPath = await copyApp(dir, 'check');
-        await signApp(appPath);
+        const appPath = await copyMacOSFixtureApp(dir, 'check');
+        await signApp(appPath, identity);
         server.get('/update-check', (req, res) => {
           res.status(204).send();
         });
@@ -232,8 +167,8 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
 
     it('should hit the update endpoint with customer headers when checkForUpdates is called', async () => {
       await withTempDirectory(async (dir) => {
-        const appPath = await copyApp(dir, 'check-with-headers');
-        await signApp(appPath);
+        const appPath = await copyMacOSFixtureApp(dir, 'check-with-headers');
+        await signApp(appPath, identity);
         server.get('/update-check', (req, res) => {
           res.status(204).send();
         });
@@ -249,8 +184,8 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
 
     it('should hit the download endpoint when an update is available and error if the file is bad', async () => {
       await withTempDirectory(async (dir) => {
-        const appPath = await copyApp(dir, 'update');
-        await signApp(appPath);
+        const appPath = await copyMacOSFixtureApp(dir, 'update');
+        await signApp(appPath, identity);
         server.get('/update-file', (req, res) => {
           res.status(500).send('This is not a file');
         });
@@ -279,16 +214,20 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
       nextVersion: string;
       startFixture: string;
       endFixture: string;
-      mutateAppPostSign?: {
-        mutate: (appPath: string) => Promise<void>,
-        mutationKey: string,
-      }
+      mutateAppPreSign?: Mutation;
+      mutateAppPostSign?: Mutation;
     }, fn: (appPath: string, zipPath: string) => Promise<void>) => {
       await withTempDirectory(async (dir) => {
-        const appPath = await copyApp(dir, opts.startFixture);
-        await signApp(appPath);
+        const appPath = await copyMacOSFixtureApp(dir, opts.startFixture);
+        await opts.mutateAppPreSign?.mutate(appPath);
+        const infoPath = path.resolve(appPath, 'Contents', 'Info.plist');
+        await fs.promises.writeFile(
+          infoPath,
+          (await fs.promises.readFile(infoPath, 'utf8')).replace(/(<key>CFBundleShortVersionString<\/key>\s+<string>)[^<]+/g, '$11.0.0')
+        );
+        await signApp(appPath, identity);
 
-        const updateZipPath = await getOrCreateUpdateZipPath(opts.nextVersion, opts.endFixture, opts.mutateAppPostSign);
+        const updateZipPath = await getOrCreateUpdateZipPath(opts.nextVersion, opts.endFixture, opts.mutateAppPreSign, opts.mutateAppPostSign);
 
         await fn(appPath, updateZipPath);
       });
@@ -332,6 +271,231 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
         expect(requests).to.have.lengthOf(3);
         expect(requests[2].url).to.equal('/update-check/updated/2.0.0');
         expect(requests[2].header('user-agent')).to.include('Electron/');
+      });
+    });
+
+    it('should hit the download endpoint when an update is available and update successfully when the zip is provided even after a different update was staged', async () => {
+      await withUpdatableApp({
+        nextVersion: '2.0.0',
+        startFixture: 'update-stack',
+        endFixture: 'update-stack'
+      }, async (appPath, updateZipPath2) => {
+        await withUpdatableApp({
+          nextVersion: '3.0.0',
+          startFixture: 'update-stack',
+          endFixture: 'update-stack'
+        }, async (_, updateZipPath3) => {
+          let updateCount = 0;
+          server.get('/update-file', (req, res) => {
+            res.download(updateCount > 1 ? updateZipPath3 : updateZipPath2);
+          });
+          server.get('/update-check', (req, res) => {
+            updateCount++;
+            res.json({
+              url: `http://localhost:${port}/update-file`,
+              name: 'My Release Name',
+              notes: 'Theses are some release notes innit',
+              pub_date: (new Date()).toString()
+            });
+          });
+          const relaunchPromise = new Promise<void>((resolve) => {
+            server.get('/update-check/updated/:version', (req, res) => {
+              res.status(204).send();
+              resolve();
+            });
+          });
+          const launchResult = await launchApp(appPath, [`http://localhost:${port}/update-check`]);
+          logOnError(launchResult, () => {
+            expect(launchResult).to.have.property('code', 0);
+            expect(launchResult.out).to.include('Update Downloaded');
+            expect(requests).to.have.lengthOf(4);
+            expect(requests[0]).to.have.property('url', '/update-check');
+            expect(requests[1]).to.have.property('url', '/update-file');
+            expect(requests[0].header('user-agent')).to.include('Electron/');
+            expect(requests[1].header('user-agent')).to.include('Electron/');
+            expect(requests[2]).to.have.property('url', '/update-check');
+            expect(requests[3]).to.have.property('url', '/update-file');
+            expect(requests[2].header('user-agent')).to.include('Electron/');
+            expect(requests[3].header('user-agent')).to.include('Electron/');
+          });
+
+          await relaunchPromise;
+          expect(requests).to.have.lengthOf(5);
+          expect(requests[4].url).to.equal('/update-check/updated/3.0.0');
+          expect(requests[4].header('user-agent')).to.include('Electron/');
+        });
+      });
+    });
+
+    it('should update to lower version numbers', async () => {
+      await withUpdatableApp({
+        nextVersion: '0.0.1',
+        startFixture: 'update',
+        endFixture: 'update'
+      }, async (appPath, updateZipPath) => {
+        server.get('/update-file', (req, res) => {
+          res.download(updateZipPath);
+        });
+        server.get('/update-check', (req, res) => {
+          res.json({
+            url: `http://localhost:${port}/update-file`,
+            name: 'My Release Name',
+            notes: 'Theses are some release notes innit',
+            pub_date: (new Date()).toString()
+          });
+        });
+        const relaunchPromise = new Promise<void>((resolve) => {
+          server.get('/update-check/updated/:version', (req, res) => {
+            res.status(204).send();
+            resolve();
+          });
+        });
+        const launchResult = await launchApp(appPath, [`http://localhost:${port}/update-check`]);
+        logOnError(launchResult, () => {
+          expect(launchResult).to.have.property('code', 0);
+          expect(launchResult.out).to.include('Update Downloaded');
+          expect(requests).to.have.lengthOf(2);
+          expect(requests[0]).to.have.property('url', '/update-check');
+          expect(requests[1]).to.have.property('url', '/update-file');
+          expect(requests[0].header('user-agent')).to.include('Electron/');
+          expect(requests[1].header('user-agent')).to.include('Electron/');
+        });
+
+        await relaunchPromise;
+        expect(requests).to.have.lengthOf(3);
+        expect(requests[2].url).to.equal('/update-check/updated/0.0.1');
+        expect(requests[2].header('user-agent')).to.include('Electron/');
+      });
+    });
+
+    describe('with ElectronSquirrelPreventDowngrades enabled', () => {
+      it('should not update to lower version numbers', async () => {
+        await withUpdatableApp({
+          nextVersion: '0.0.1',
+          startFixture: 'update',
+          endFixture: 'update',
+          mutateAppPreSign: {
+            mutationKey: 'prevent-downgrades',
+            mutate: async (appPath) => {
+              const infoPath = path.resolve(appPath, 'Contents', 'Info.plist');
+              await fs.promises.writeFile(
+                infoPath,
+                (await fs.promises.readFile(infoPath, 'utf8')).replace('<key>NSSupportsAutomaticGraphicsSwitching</key>', '<key>ElectronSquirrelPreventDowngrades</key><true/><key>NSSupportsAutomaticGraphicsSwitching</key>')
+              );
+            }
+          }
+        }, async (appPath, updateZipPath) => {
+          server.get('/update-file', (req, res) => {
+            res.download(updateZipPath);
+          });
+          server.get('/update-check', (req, res) => {
+            res.json({
+              url: `http://localhost:${port}/update-file`,
+              name: 'My Release Name',
+              notes: 'Theses are some release notes innit',
+              pub_date: (new Date()).toString()
+            });
+          });
+          const launchResult = await launchApp(appPath, [`http://localhost:${port}/update-check`]);
+          logOnError(launchResult, () => {
+            expect(launchResult).to.have.property('code', 1);
+            expect(launchResult.out).to.include('Cannot update to a bundle with a lower version number');
+            expect(requests).to.have.lengthOf(2);
+            expect(requests[0]).to.have.property('url', '/update-check');
+            expect(requests[1]).to.have.property('url', '/update-file');
+            expect(requests[0].header('user-agent')).to.include('Electron/');
+            expect(requests[1].header('user-agent')).to.include('Electron/');
+          });
+        });
+      });
+
+      it('should not update to version strings that are not simple Major.Minor.Patch', async () => {
+        await withUpdatableApp({
+          nextVersion: '2.0.0-bad',
+          startFixture: 'update',
+          endFixture: 'update',
+          mutateAppPreSign: {
+            mutationKey: 'prevent-downgrades',
+            mutate: async (appPath) => {
+              const infoPath = path.resolve(appPath, 'Contents', 'Info.plist');
+              await fs.promises.writeFile(
+                infoPath,
+                (await fs.promises.readFile(infoPath, 'utf8')).replace('<key>NSSupportsAutomaticGraphicsSwitching</key>', '<key>ElectronSquirrelPreventDowngrades</key><true/><key>NSSupportsAutomaticGraphicsSwitching</key>')
+              );
+            }
+          }
+        }, async (appPath, updateZipPath) => {
+          server.get('/update-file', (req, res) => {
+            res.download(updateZipPath);
+          });
+          server.get('/update-check', (req, res) => {
+            res.json({
+              url: `http://localhost:${port}/update-file`,
+              name: 'My Release Name',
+              notes: 'Theses are some release notes innit',
+              pub_date: (new Date()).toString()
+            });
+          });
+          const launchResult = await launchApp(appPath, [`http://localhost:${port}/update-check`]);
+          logOnError(launchResult, () => {
+            expect(launchResult).to.have.property('code', 1);
+            expect(launchResult.out).to.include('Cannot update to a bundle with a lower version number');
+            expect(requests).to.have.lengthOf(2);
+            expect(requests[0]).to.have.property('url', '/update-check');
+            expect(requests[1]).to.have.property('url', '/update-file');
+            expect(requests[0].header('user-agent')).to.include('Electron/');
+            expect(requests[1].header('user-agent')).to.include('Electron/');
+          });
+        });
+      });
+
+      it('should still update to higher version numbers', async () => {
+        await withUpdatableApp({
+          nextVersion: '1.0.1',
+          startFixture: 'update',
+          endFixture: 'update'
+        }, async (appPath, updateZipPath) => {
+          server.get('/update-file', (req, res) => {
+            res.download(updateZipPath);
+          });
+          server.get('/update-check', (req, res) => {
+            res.json({
+              url: `http://localhost:${port}/update-file`,
+              name: 'My Release Name',
+              notes: 'Theses are some release notes innit',
+              pub_date: (new Date()).toString()
+            });
+          });
+          const relaunchPromise = new Promise<void>((resolve) => {
+            server.get('/update-check/updated/:version', (req, res) => {
+              res.status(204).send();
+              resolve();
+            });
+          });
+          const launchResult = await launchApp(appPath, [`http://localhost:${port}/update-check`]);
+          logOnError(launchResult, () => {
+            expect(launchResult).to.have.property('code', 0);
+            expect(launchResult.out).to.include('Update Downloaded');
+            expect(requests).to.have.lengthOf(2);
+            expect(requests[0]).to.have.property('url', '/update-check');
+            expect(requests[1]).to.have.property('url', '/update-file');
+            expect(requests[0].header('user-agent')).to.include('Electron/');
+            expect(requests[1].header('user-agent')).to.include('Electron/');
+          });
+
+          await relaunchPromise;
+          expect(requests).to.have.lengthOf(3);
+          expect(requests[2].url).to.equal('/update-check/updated/1.0.1');
+          expect(requests[2].header('user-agent')).to.include('Electron/');
+        });
+      });
+
+      it('should compare version numbers correctly', () => {
+        expect(autoUpdater.isVersionAllowedForUpdate!('1.0.0', '2.0.0')).to.equal(true);
+        expect(autoUpdater.isVersionAllowedForUpdate!('1.0.1', '1.0.10')).to.equal(true);
+        expect(autoUpdater.isVersionAllowedForUpdate!('1.0.10', '1.0.1')).to.equal(false);
+        expect(autoUpdater.isVersionAllowedForUpdate!('1.31.1', '1.32.0')).to.equal(true);
+        expect(autoUpdater.isVersionAllowedForUpdate!('1.31.1', '0.32.0')).to.equal(false);
       });
     });
 
@@ -394,7 +558,7 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
 
         await shipItFlipFlopPromise;
         expect(requests).to.have.lengthOf(2, 'should not have relaunched the updated app');
-        expect(JSON.parse(await fs.readFile(path.resolve(appPath, 'Contents/Resources/app/package.json'), 'utf8')).version).to.equal('1.0.0', 'should still be the old version on disk');
+        expect(JSON.parse(await fs.promises.readFile(path.resolve(appPath, 'Contents/Resources/app/package.json'), 'utf8')).version).to.equal('1.0.0', 'should still be the old version on disk');
 
         retainerHandle.kill('SIGINT');
       });
@@ -467,7 +631,7 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
           mutationKey: 'add-resource',
           mutate: async (appPath) => {
             const resourcesPath = path.resolve(appPath, 'Contents', 'Resources', 'app', 'injected.txt');
-            await fs.writeFile(resourcesPath, 'demo');
+            await fs.promises.writeFile(resourcesPath, 'demo');
           }
         }
       }, async (appPath, updateZipPath) => {
@@ -505,8 +669,8 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
           mutationKey: 'modify-shipit',
           mutate: async (appPath) => {
             const shipItPath = path.resolve(appPath, 'Contents', 'Frameworks', 'Squirrel.framework', 'Resources', 'ShipIt');
-            await fs.remove(shipItPath);
-            await fs.symlink('/tmp/ShipIt', shipItPath, 'file');
+            await fs.promises.rm(shipItPath, { force: true, recursive: true });
+            await fs.promises.symlink('/tmp/ShipIt', shipItPath, 'file');
           }
         }
       }, async (appPath, updateZipPath) => {
@@ -544,7 +708,7 @@ ifdescribe(process.platform === 'darwin' && !(process.env.CI && process.arch ===
           mutationKey: 'modify-eframework',
           mutate: async (appPath) => {
             const shipItPath = path.resolve(appPath, 'Contents', 'Frameworks', 'Electron Framework.framework', 'Electron Framework');
-            await fs.appendFile(shipItPath, Buffer.from('123'));
+            await fs.promises.appendFile(shipItPath, Buffer.from('123'));
           }
         }
       }, async (appPath, updateZipPath) => {

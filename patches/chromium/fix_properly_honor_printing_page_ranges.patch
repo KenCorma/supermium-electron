@@ -10,7 +10,7 @@ them should they exist.
 This will be upstreamed.
 
 diff --git a/printing/printing_context_mac.h b/printing/printing_context_mac.h
-index c9a13aee1e64f359cd1d5c2e440b4df204420997..7790c311400fc84bfda6c99e1ebd8da728031a77 100644
+index 5b469b3b6bd11d8e0baa08e9be257990ac9bc438..c1410e5d8112f0319de40e4fbf41dbaea4b9733c 100644
 --- a/printing/printing_context_mac.h
 +++ b/printing/printing_context_mac.h
 @@ -84,6 +84,10 @@ class COMPONENT_EXPORT(PRINTING) PrintingContextMac : public PrintingContext {
@@ -25,10 +25,10 @@ index c9a13aee1e64f359cd1d5c2e440b4df204420997..7790c311400fc84bfda6c99e1ebd8da7
    // Returns true if duplex mode is set.
    bool SetDuplexModeInPrintSettings(mojom::DuplexMode mode);
 diff --git a/printing/printing_context_mac.mm b/printing/printing_context_mac.mm
-index 010c7ed3025172e1e5a60fb7c89c3ea7a38c3ba5..ce13929c3b9205b71eeae32aad89c92f00d6c8c0 100644
+index 0b3e9d694c47534996bc7de375a7a0b3fda47e15..67b19d37d582556b117b7f5f9caff29c6e30077f 100644
 --- a/printing/printing_context_mac.mm
 +++ b/printing/printing_context_mac.mm
-@@ -209,7 +209,8 @@ bool IsIppColorModelColorful(mojom::ColorModel color_model) {
+@@ -486,7 +486,8 @@ void ApplySystemPrintDialogData(
          !SetCollateInPrintSettings(settings_->collate()) ||
          !SetDuplexModeInPrintSettings(settings_->duplex_mode()) ||
          !SetOutputColor(static_cast<int>(settings_->color())) ||
@@ -38,7 +38,7 @@ index 010c7ed3025172e1e5a60fb7c89c3ea7a38c3ba5..ce13929c3b9205b71eeae32aad89c92f
        return OnError();
      }
    }
-@@ -362,6 +363,22 @@ bool IsIppColorModelColorful(mojom::ColorModel color_model) {
+@@ -639,6 +640,22 @@ void ApplySystemPrintDialogData(
    return PMSetCopies(print_settings, copies, false) == noErr;
  }
  
@@ -62,10 +62,10 @@ index 010c7ed3025172e1e5a60fb7c89c3ea7a38c3ba5..ce13929c3b9205b71eeae32aad89c92f
    PMPrintSettings print_settings =
        static_cast<PMPrintSettings>([print_info_ PMPrintSettings]);
 diff --git a/printing/printing_context_system_dialog_win.cc b/printing/printing_context_system_dialog_win.cc
-index 07847521e7217c78480205812a73cc89503c00d2..586e866ca7ec0eb0b573d23e3bd95792c22bff20 100644
+index 391397cc4fb5748caa174fb061c7c128d079200d..3179af2283390849b5d6ff945f9f658e4e9bdb54 100644
 --- a/printing/printing_context_system_dialog_win.cc
 +++ b/printing/printing_context_system_dialog_win.cc
-@@ -75,14 +75,28 @@ void PrintingContextSystemDialogWin::AskUserForSettings(
+@@ -72,14 +72,28 @@ void PrintingContextSystemDialogWin::AskUserForSettings(
    PRINTPAGERANGE ranges[32];
    dialog_options.nStartPage = START_PAGE_GENERAL;
    if (max_pages) {
@@ -100,10 +100,10 @@ index 07847521e7217c78480205812a73cc89503c00d2..586e866ca7ec0eb0b573d23e3bd95792
    } else {
      // No need to bother, we don't know how many pages are available.
 diff --git a/ui/gtk/printing/print_dialog_gtk.cc b/ui/gtk/printing/print_dialog_gtk.cc
-index afa936ce95602d5e66189303a73d7824611187b3..89371a4f0d3216f21761adc51bdd2accec0c74a1 100644
+index 9d9147427a99804c4ba071b27948c06caac4c477..e047f4a88612172d58802b3529f04061bf90a939 100644
 --- a/ui/gtk/printing/print_dialog_gtk.cc
 +++ b/ui/gtk/printing/print_dialog_gtk.cc
-@@ -247,6 +247,24 @@ void PrintDialogGtk::UpdateSettings(
+@@ -241,6 +241,24 @@ void PrintDialogGtk::UpdateSettings(
  
    gtk_print_settings_set_n_copies(gtk_settings_, settings->copies());
    gtk_print_settings_set_collate(gtk_settings_, settings->collate());

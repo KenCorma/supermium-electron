@@ -27,6 +27,7 @@
 #include "shell/common/extensions/api/permission_features.h"
 
 namespace extensions {
+namespace {
 
 constexpr APIPermissionInfo::InitInfo permissions_to_register[] = {
     {mojom::APIPermissionID::kDevtools, "devtools",
@@ -41,6 +42,8 @@ constexpr APIPermissionInfo::InitInfo permissions_to_register[] = {
     {mojom::APIPermissionID::kManagement, "management"},
     {mojom::APIPermissionID::kTab, "tabs",
      APIPermissionInfo::kFlagRequiresManagementUIWarning},
+    {mojom::APIPermissionID::kScripting, "scripting",
+     APIPermissionInfo::kFlagRequiresManagementUIWarning},
 };
 base::span<const APIPermissionInfo::InitInfo> GetPermissionInfos() {
   return base::make_span(permissions_to_register);
@@ -49,6 +52,7 @@ base::span<const Alias> GetPermissionAliases() {
   return base::span<const Alias>();
 }
 
+}  // namespace
 }  // namespace extensions
 
 namespace electron {
@@ -86,7 +90,7 @@ bool ElectronExtensionsAPIProvider::IsAPISchemaGenerated(
   return extensions::api::ElectronGeneratedSchemas::IsGenerated(name);
 }
 
-base::StringPiece ElectronExtensionsAPIProvider::GetAPISchema(
+std::string_view ElectronExtensionsAPIProvider::GetAPISchema(
     const std::string& name) {
   return extensions::api::ElectronGeneratedSchemas::Get(name);
 }

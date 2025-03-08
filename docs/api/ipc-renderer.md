@@ -32,6 +32,15 @@ The `ipcRenderer` module has the following method to listen for events and send 
 Listens to `channel`, when a new message arrives `listener` would be called with
 `listener(event, args...)`.
 
+### `ipcRenderer.off(channel, listener)`
+
+* `channel` string
+* `listener` Function
+  * `event` [IpcRendererEvent][ipc-renderer-event]
+  * `...args` any[]
+
+Alias for [`ipcRenderer.removeListener`](#ipcrendererremovelistenerchannel-listener).
+
 ### `ipcRenderer.once(channel, listener)`
 
 * `channel` string
@@ -42,10 +51,20 @@ Listens to `channel`, when a new message arrives `listener` would be called with
 Adds a one time `listener` function for the event. This `listener` is invoked
 only the next time a message is sent to `channel`, after which it is removed.
 
+### `ipcRenderer.addListener(channel, listener)`
+
+* `channel` string
+* `listener` Function
+  * `event` [IpcRendererEvent][ipc-renderer-event]
+  * `...args` any[]
+
+Alias for [`ipcRenderer.on`](#ipcrendereronchannel-listener).
+
 ### `ipcRenderer.removeListener(channel, listener)`
 
 * `channel` string
 * `listener` Function
+  * `event` [IpcRendererEvent][ipc-renderer-event]
   * `...args` any[]
 
 Removes the specified `listener` from the listener array for the specified
@@ -63,8 +82,8 @@ Removes all listeners, or those of the specified `channel`.
 * `...args` any[]
 
 Send an asynchronous message to the main process via `channel`, along with
-arguments. Arguments will be serialized with the [Structured Clone
-Algorithm][SCA], just like [`window.postMessage`][], so prototype chains will not be
+arguments. Arguments will be serialized with the [Structured Clone Algorithm][SCA],
+just like [`window.postMessage`][], so prototype chains will not be
 included. Sending Functions, Promises, Symbols, WeakMaps, or WeakSets will
 throw an exception.
 
@@ -91,8 +110,8 @@ If you want to receive a single response from the main process, like the result 
 Returns `Promise<any>` - Resolves with the response from the main process.
 
 Send a message to the main process via `channel` and expect a result
-asynchronously. Arguments will be serialized with the [Structured Clone
-Algorithm][SCA], just like [`window.postMessage`][], so prototype chains will not be
+asynchronously. Arguments will be serialized with the [Structured Clone Algorithm][SCA],
+just like [`window.postMessage`][], so prototype chains will not be
 included. Sending Functions, Promises, Symbols, WeakMaps, or WeakSets will
 throw an exception.
 
@@ -101,7 +120,7 @@ The main process should listen for `channel` with
 
 For example:
 
-```javascript @ts-type={someArgument:unknown} @ts-type={doSomeWork:(arg:unknown)=>Promise<unknown>}
+```js @ts-type={someArgument:unknown} @ts-type={doSomeWork:(arg:unknown)=>Promise<unknown>}
 // Renderer process
 ipcRenderer.invoke('some-name', someArgument).then((result) => {
   // ...
@@ -141,8 +160,8 @@ If you do not need a response to the message, consider using [`ipcRenderer.send`
 Returns `any` - The value sent back by the [`ipcMain`](./ipc-main.md) handler.
 
 Send a message to the main process via `channel` and expect a result
-synchronously. Arguments will be serialized with the [Structured Clone
-Algorithm][SCA], just like [`window.postMessage`][], so prototype chains will not be
+synchronously. Arguments will be serialized with the [Structured Clone Algorithm][SCA],
+just like [`window.postMessage`][], so prototype chains will not be
 included. Sending Functions, Promises, Symbols, WeakMaps, or WeakSets will
 throw an exception.
 
@@ -189,16 +208,8 @@ ipcMain.on('port', (e, msg) => {
 })
 ```
 
-For more information on using `MessagePort` and `MessageChannel`, see the [MDN
-documentation](https://developer.mozilla.org/en-US/docs/Web/API/MessageChannel).
-
-### `ipcRenderer.sendTo(webContentsId, channel, ...args)` _Deprecated_
-
-* `webContentsId` number
-* `channel` string
-* `...args` any[]
-
-Sends a message to a window with `webContentsId` via `channel`.
+For more information on using `MessagePort` and `MessageChannel`, see the
+[MDN documentation](https://developer.mozilla.org/en-US/docs/Web/API/MessageChannel).
 
 ### `ipcRenderer.sendToHost(channel, ...args)`
 

@@ -51,6 +51,18 @@ Unsupported options are:
 --http-parser
 ```
 
+If the [`nodeOptions` fuse](../tutorial/fuses.md#nodeoptions) is disabled, `NODE_OPTIONS` will be ignored.
+
+### `NODE_EXTRA_CA_CERTS`
+
+See [Node.js cli documentation](https://github.com/nodejs/node/blob/main/doc/api/cli.md#node_extra_ca_certsfile) for details.
+
+```sh
+export NODE_EXTRA_CA_CERTS=/path/to/cert.pem 
+```
+
+If the [`nodeOptions` fuse](../tutorial/fuses.md#nodeoptions) is disabled, `NODE_EXTRA_CA_CERTS` will be ignored.
+
 ### `GOOGLE_API_KEY`
 
 Geolocation support in Electron requires the use of Google Cloud Platform's
@@ -59,7 +71,7 @@ geolocation webservice. To enable this feature, acquire a
 and place the following code in your main process file, before opening any
 browser windows that will make geolocation requests:
 
-```javascript
+```js
 process.env.GOOGLE_API_KEY = 'YOUR_KEY_HERE'
 ```
 
@@ -92,6 +104,8 @@ you would when running the normal Node.js executable, with the exception of the 
 These flags are disabled owing to the fact that Electron uses BoringSSL instead of OpenSSL when building Node.js'
 `crypto` module, and so will not work as designed.
 
+If the [`runAsNode` fuse](../tutorial/fuses.md#L13) is disabled, `ELECTRON_RUN_AS_NODE` will be ignored.
+
 ### `ELECTRON_NO_ATTACH_CONSOLE` _Windows_
 
 Don't attach to the current console session.
@@ -111,6 +125,16 @@ Options:
 * `kioclient5`
 * `kioclient`
 
+### `ELECTRON_OZONE_PLATFORM_HINT` _Linux_
+
+Selects the preferred platform backend used on Linux. The default one is `x11`. `auto` selects Wayland if possible, X11 otherwise.
+
+Options:
+
+* `auto`
+* `wayland`
+* `x11`
+
 ## Development Variables
 
 The following environment variables are intended primarily for development and
@@ -121,21 +145,16 @@ debugging purposes.
 Prints Chromium's internal logging to the console.
 
 Setting this variable is the same as passing `--enable-logging`
-on the command line. For more info, see `--enable-logging` in [command-line
-switches](./command-line-switches.md#--enable-loggingfile).
+on the command line. For more info, see `--enable-logging` in
+[command-line switches](./command-line-switches.md#--enable-loggingfile).
 
 ### `ELECTRON_LOG_FILE`
 
 Sets the file destination for Chromium's internal logging.
 
 Setting this variable is the same as passing `--log-file`
-on the command line. For more info, see `--log-file` in [command-line
-switches](./command-line-switches.md#--log-filepath).
-
-### `ELECTRON_DEBUG_DRAG_REGIONS`
-
-Adds coloration to draggable regions on [`BrowserView`](./browser-view.md)s on macOS - draggable regions will be colored
-green and non-draggable regions will be colored red to aid debugging.
+on the command line. For more info, see `--log-file` in
+[command-line switches](./command-line-switches.md#--log-filepath).
 
 ### `ELECTRON_DEBUG_NOTIFICATIONS`
 

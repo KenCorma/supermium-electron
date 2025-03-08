@@ -7,9 +7,9 @@
 #include <gdk/gdk.h>
 #include <gtk/gtk.h>
 
-#include <map>
 #include <string>
 
+#include "base/containers/flat_map.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "shell/browser/ui/gtk_util.h"
@@ -21,14 +21,7 @@
 #include "ui/base/models/menu_model.h"
 #include "ui/events/event_constants.h"
 #include "ui/events/keycodes/keyboard_code_conversion_x.h"
-
-#if defined(USE_OZONE)
-#include "ui/ozone/buildflags.h"
-#if BUILDFLAG(OZONE_PLATFORM_X11)
-#define USE_OZONE_PLATFORM_X11
-#endif
 #include "ui/ozone/public/ozone_platform.h"
-#endif
 
 namespace electron::gtkui {
 
@@ -46,8 +39,6 @@ int EventFlagsFromGdkState(guint state) {
   flags |= (state & GDK_BUTTON3_MASK) ? ui::EF_RIGHT_MOUSE_BUTTON : ui::EF_NONE;
   return flags;
 }
-
-#if defined(USE_OZONE_PLATFORM_X11)
 
 guint GetGdkKeyCodeForAccelerator(const ui::Accelerator& accelerator) {
   // The second parameter is false because accelerator keys are expressed in
@@ -67,8 +58,6 @@ GdkModifierType GetGdkModifierForAccelerator(
     modifier |= GDK_MOD1_MASK;
   return static_cast<GdkModifierType>(modifier);
 }
-
-#endif
 
 }  // namespace
 
@@ -109,8 +98,8 @@ GtkWidget* AppendMenuItemToMenu(int index,
                                 GtkWidget* menu_item,
                                 GtkWidget* menu,
                                 bool connect_to_activate,
-                                GCallback item_activated_cb,
-                                void* this_ptr) {
+                                MenuActivatedCallback item_activated_cb,
+                                std::vector<ScopedGSignal>* signals) {
   // Set the ID of a menu item.
   // Add 1 to the menu_id to avoid setting zero (null) to "menu-id".
   g_object_set_data(G_OBJECT(menu_item), "menu-id", GINT_TO_POINTER(index + 1));
@@ -118,7 +107,7 @@ GtkWidget* AppendMenuItemToMenu(int index,
   // Native menu items do their own thing, so only selectively listen for the
   // activate signal.
   if (connect_to_activate) {
-    g_signal_connect(menu_item, "activate", item_activated_cb, this_ptr);
+    signals->emplace_back(menu_item, "activate", item_activated_cb);
   }
 
   // AppendMenuItemToMenu is used both internally when we control menu creation
@@ -158,10 +147,10 @@ void ExecuteCommand(ui::MenuModel* model, int id) {
 
 void BuildSubmenuFromModel(ui::MenuModel* model,
                            GtkWidget* menu,
-                           GCallback item_activated_cb,
+                           MenuActivatedCallback item_activated_cb,
                            bool* block_activation,
-                           void* this_ptr) {
-  std::map<int, GtkWidget*> radio_groups;
+                           std::vector<ScopedGSignal>* signals) {
+  base::flat_map<int, GtkWidget*> radio_groups;
   GtkWidget* menu_item = nullptr;
   for (size_t i = 0; i < model->GetItemCount(); ++i) {
     std::string label = ui::ConvertAcceleratorsFromWindowsStyle(
@@ -221,7 +210,7 @@ void BuildSubmenuFromModel(ui::MenuModel* model,
       GtkWidget* submenu = gtk_menu_new();
       ui::MenuModel* submenu_model = model->GetSubmenuModelAt(i);
       BuildSubmenuFromModel(submenu_model, submenu, item_activated_cb,
-                            block_activation, this_ptr);
+                            block_activation, signals);
       gtk_menu_item_set_submenu(GTK_MENU_ITEM(menu_item), submenu);
 
       // Update all the menu item info in the newly-generated menu.
@@ -231,7 +220,6 @@ void BuildSubmenuFromModel(ui::MenuModel* model,
       connect_to_activate = false;
     }
 
-#if defined(USE_OZONE_PLATFORM_X11)
     if (ui::OzonePlatform::GetInstance()
             ->GetPlatformProperties()
             .electron_can_call_x11) {
@@ -243,11 +231,10 @@ void BuildSubmenuFromModel(ui::MenuModel* model,
                                    GTK_ACCEL_VISIBLE);
       }
     }
-#endif
 
     g_object_set_data(G_OBJECT(menu_item), "model", model);
     AppendMenuItemToMenu(i, model, menu_item, menu, connect_to_activate,
-                         item_activated_cb, this_ptr);
+                         item_activated_cb, signals);
 
     menu_item = nullptr;
   }

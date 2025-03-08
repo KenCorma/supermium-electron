@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
-#include "base/message_loop/message_pump_mac.h"
+#include "base/message_loop/message_pump_apple.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/task/current_thread.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -249,7 +249,15 @@
                                 useDefaultAccelerator:NO];
     // Hacky way to mimic design of ordinary tray menu.
     [statusItem_ setMenu:[menuController menu]];
+    base::WeakPtr<electron::TrayIconCocoa> weak_tray_icon =
+        trayIcon_->GetWeakPtr();
     [[statusItem_ button] performClick:self];
+    // /⚠️ \ Warning! Arbitrary JavaScript and who knows what else has been run
+    // during -performClick:. This object may have been deleted.
+    // We check if |trayIcon_| is still alive as it owns us and has the same
+    // lifetime.
+    if (!weak_tray_icon)
+      return;
     [statusItem_ setMenu:[menuController_ menu]];
     return;
   }
@@ -414,7 +422,7 @@ gfx::Rect TrayIconCocoa::GetBounds() {
 }
 
 // static
-TrayIcon* TrayIcon::Create(absl::optional<UUID> guid) {
+TrayIcon* TrayIcon::Create(std::optional<UUID> guid) {
   return new TrayIconCocoa;
 }
 

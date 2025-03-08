@@ -2,10 +2,12 @@
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
+#include <iomanip>
+#include <string_view>
+
 #include <dwmapi.h>
 #include <windows.devices.enumeration.h>
 #include <wrl/client.h>
-#include <iomanip>
 
 #include "shell/browser/api/electron_api_system_preferences.h"
 
@@ -98,42 +100,41 @@ std::string SystemPreferences::GetAccentColor() {
 
 std::string SystemPreferences::GetColor(gin_helper::ErrorThrower thrower,
                                         const std::string& color) {
-  static constexpr auto Lookup =
-      base::MakeFixedFlatMapSorted<base::StringPiece, int>({
-          {"3d-dark-shadow", COLOR_3DDKSHADOW},
-          {"3d-face", COLOR_3DFACE},
-          {"3d-highlight", COLOR_3DHIGHLIGHT},
-          {"3d-light", COLOR_3DLIGHT},
-          {"3d-shadow", COLOR_3DSHADOW},
-          {"active-border", COLOR_ACTIVEBORDER},
-          {"active-caption", COLOR_ACTIVECAPTION},
-          {"active-caption-gradient", COLOR_GRADIENTACTIVECAPTION},
-          {"app-workspace", COLOR_APPWORKSPACE},
-          {"button-text", COLOR_BTNTEXT},
-          {"caption-text", COLOR_CAPTIONTEXT},
-          {"desktop", COLOR_DESKTOP},
-          {"disabled-text", COLOR_GRAYTEXT},
-          {"highlight", COLOR_HIGHLIGHT},
-          {"highlight-text", COLOR_HIGHLIGHTTEXT},
-          {"hotlight", COLOR_HOTLIGHT},
-          {"inactive-border", COLOR_INACTIVEBORDER},
-          {"inactive-caption", COLOR_INACTIVECAPTION},
-          {"inactive-caption-gradient", COLOR_GRADIENTINACTIVECAPTION},
-          {"inactive-caption-text", COLOR_INACTIVECAPTIONTEXT},
-          {"info-background", COLOR_INFOBK},
-          {"info-text", COLOR_INFOTEXT},
-          {"menu", COLOR_MENU},
-          {"menu-highlight", COLOR_MENUHILIGHT},
-          {"menu-text", COLOR_MENUTEXT},
-          {"menubar", COLOR_MENUBAR},
-          {"scrollbar", COLOR_SCROLLBAR},
-          {"window", COLOR_WINDOW},
-          {"window-frame", COLOR_WINDOWFRAME},
-          {"window-text", COLOR_WINDOWTEXT},
-      });
+  static constexpr auto Lookup = base::MakeFixedFlatMap<std::string_view, int>({
+      {"3d-dark-shadow", COLOR_3DDKSHADOW},
+      {"3d-face", COLOR_3DFACE},
+      {"3d-highlight", COLOR_3DHIGHLIGHT},
+      {"3d-light", COLOR_3DLIGHT},
+      {"3d-shadow", COLOR_3DSHADOW},
+      {"active-border", COLOR_ACTIVEBORDER},
+      {"active-caption", COLOR_ACTIVECAPTION},
+      {"active-caption-gradient", COLOR_GRADIENTACTIVECAPTION},
+      {"app-workspace", COLOR_APPWORKSPACE},
+      {"button-text", COLOR_BTNTEXT},
+      {"caption-text", COLOR_CAPTIONTEXT},
+      {"desktop", COLOR_DESKTOP},
+      {"disabled-text", COLOR_GRAYTEXT},
+      {"highlight", COLOR_HIGHLIGHT},
+      {"highlight-text", COLOR_HIGHLIGHTTEXT},
+      {"hotlight", COLOR_HOTLIGHT},
+      {"inactive-border", COLOR_INACTIVEBORDER},
+      {"inactive-caption", COLOR_INACTIVECAPTION},
+      {"inactive-caption-gradient", COLOR_GRADIENTINACTIVECAPTION},
+      {"inactive-caption-text", COLOR_INACTIVECAPTIONTEXT},
+      {"info-background", COLOR_INFOBK},
+      {"info-text", COLOR_INFOTEXT},
+      {"menu", COLOR_MENU},
+      {"menu-highlight", COLOR_MENUHILIGHT},
+      {"menu-text", COLOR_MENUTEXT},
+      {"menubar", COLOR_MENUBAR},
+      {"scrollbar", COLOR_SCROLLBAR},
+      {"window", COLOR_WINDOW},
+      {"window-frame", COLOR_WINDOWFRAME},
+      {"window-text", COLOR_WINDOWTEXT},
+  });
 
   if (const auto* iter = Lookup.find(color); iter != Lookup.end())
-    return ToRGBHex(color_utils::GetSysSkColor(iter->second));
+    return ToRGBAHex(color_utils::GetSysSkColor(iter->second));
 
   thrower.ThrowError("Unknown color: " + color);
   return "";
@@ -158,6 +159,8 @@ std::string SystemPreferences::GetMediaAccessStatus(
 }
 
 void SystemPreferences::InitializeWindow() {
+  if (electron::IsUtilityProcess())
+    return;
   // Wait until app is ready before creating sys color listener
   // Creating this listener before the app is ready causes global shortcuts
   // to not fire
@@ -171,7 +174,7 @@ void SystemPreferences::InitializeWindow() {
   base::win::InitializeWindowClass(
       kSystemPreferencesWindowClass,
       &base::win::WrappedWindowProc<SystemPreferences::WndProcStatic>, 0, 0, 0,
-      NULL, NULL, NULL, NULL, NULL, &window_class);
+      nullptr, nullptr, nullptr, nullptr, nullptr, &window_class);
   instance_ = window_class.hInstance;
   atom_ = RegisterClassEx(&window_class);
 

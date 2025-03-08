@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "base/containers/contains.h"
+#include "base/containers/to_vector.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "gin/arguments.h"
@@ -29,11 +30,11 @@ namespace electron {
 
 namespace {
 
-bool IsValidWrappable(const v8::Local<v8::Value>& obj) {
-  v8::Local<v8::Object> port = v8::Local<v8::Object>::Cast(obj);
-
-  if (!port->IsObject())
+bool IsValidWrappable(const v8::Local<v8::Value>& val) {
+  if (!val->IsObject())
     return false;
+
+  v8::Local<v8::Object> port = val.As<v8::Object>();
 
   if (port->InternalFieldCount() != gin::kNumberOfInternalFields)
     return false;
@@ -76,8 +77,11 @@ void MessagePort::PostMessage(gin::Arguments* args) {
     return;
   }
 
-  electron::SerializeV8Value(args->isolate(), message_value,
-                             &transferable_message);
+  if (!electron::SerializeV8Value(args->isolate(), message_value,
+                                  &transferable_message)) {
+    // SerializeV8Value sets an exception.
+    return;
+  }
 
   v8::Local<v8::Value> transferables;
   std::vector<gin::Handle<MessagePort>> wrapped_ports;
@@ -239,11 +243,7 @@ std::vector<blink::MessagePortChannel> MessagePort::DisentanglePorts(
   }
 
   // Passed-in ports passed validity checks, so we can disentangle them.
-  std::vector<blink::MessagePortChannel> channels;
-  channels.reserve(ports.size());
-  for (auto port : ports)
-    channels.push_back(port->Disentangle());
-  return channels;
+  return base::ToVector(ports, [](auto& port) { return port->Disentangle(); });
 }
 
 void MessagePort::Pin() {

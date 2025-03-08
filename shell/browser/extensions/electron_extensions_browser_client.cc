@@ -85,7 +85,7 @@ bool ElectronExtensionsBrowserClient::AreExtensionsDisabled(
   return false;
 }
 
-bool ElectronExtensionsBrowserClient::IsValidContext(BrowserContext* context) {
+bool ElectronExtensionsBrowserClient::IsValidContext(void* context) {
   auto& context_map = ElectronBrowserContext::browser_context_map();
   for (auto const& entry : context_map) {
     if (entry.second && entry.second.get() == context)
@@ -268,6 +268,13 @@ ElectronExtensionsBrowserClient::GetProcessManagerDelegate() const {
   return process_manager_delegate_.get();
 }
 
+mojo::PendingRemote<network::mojom::URLLoaderFactory>
+ElectronExtensionsBrowserClient::GetControlledFrameEmbedderURLLoader(
+    int frame_tree_node_id,
+    content::BrowserContext* browser_context) {
+  return mojo::PendingRemote<network::mojom::URLLoaderFactory>();
+}
+
 std::unique_ptr<extensions::ExtensionHostDelegate>
 ElectronExtensionsBrowserClient::
     CreateExtensionHostDelegate() {  // TODO(samuelmaddock):
@@ -335,13 +342,12 @@ void ElectronExtensionsBrowserClient::BroadcastEventToRenderers(
     return;
   }
 
-  auto event = std::make_unique<extensions::Event>(histogram_value, event_name,
-                                                   args.Clone());
   for (auto const& [key, browser_context] :
        ElectronBrowserContext::browser_context_map()) {
     if (browser_context) {
       extensions::EventRouter::Get(browser_context.get())
-          ->BroadcastEvent(std::move(event));
+          ->BroadcastEvent(std::make_unique<extensions::Event>(
+              histogram_value, event_name, args.Clone()));
     }
   }
 }

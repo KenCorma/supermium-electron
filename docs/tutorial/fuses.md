@@ -15,7 +15,7 @@ Fuses are the solution to this problem, at a high level they are "magic bits" in
 **Default:** Enabled
 **@electron/fuses:** `FuseV1Options.RunAsNode`
 
-The runAsNode fuse toggles whether the `ELECTRON_RUN_AS_NODE` environment variable is respected or not.  Please note that if this fuse is disabled then `process.fork` in the main process will not function as expected as it depends on this environment variable to function.
+The runAsNode fuse toggles whether the `ELECTRON_RUN_AS_NODE` environment variable is respected or not.  Please note that if this fuse is disabled then `process.fork` in the main process will not function as expected as it depends on this environment variable to function. Instead, we recommend that you use [Utility Processes](../api/utility-process.md), which work for many use cases where you need a standalone Node.js process (like a Sqlite server process or similar scenarios).
 
 ### `cookieEncryption`
 
@@ -29,7 +29,7 @@ The cookieEncryption fuse toggles whether the cookie store on disk is encrypted 
 **Default:** Enabled
 **@electron/fuses:** `FuseV1Options.EnableNodeOptionsEnvironmentVariable`
 
-The nodeOptions fuse toggles whether the [`NODE_OPTIONS`](https://nodejs.org/api/cli.html#node_optionsoptions) environment variable is respected or not.  This environment variable can be used to pass all kinds of custom options to the Node.js runtime and isn't typically used by apps in production.  Most apps can safely disable this fuse.
+The nodeOptions fuse toggles whether the [`NODE_OPTIONS`](https://nodejs.org/api/cli.html#node_optionsoptions)  and [`NODE_EXTRA_CA_CERTS`](https://github.com/nodejs/node/blob/main/doc/api/cli.md#node_extra_ca_certsfile) environment variables are respected.  The `NODE_OPTIONS` environment variable can be used to pass all kinds of custom options to the Node.js runtime and isn't typically used by apps in production.  Most apps can safely disable this fuse.
 
 ### `nodeCliInspect`
 
@@ -60,6 +60,19 @@ The onlyLoadAppFromAsar fuse changes the search system that Electron uses to loc
 **@electron/fuses:** `FuseV1Options.LoadBrowserProcessSpecificV8Snapshot`
 
 The loadBrowserProcessSpecificV8Snapshot fuse changes which V8 snapshot file is used for the browser process.  By default Electron's processes will all use the same V8 snapshot file.  When this fuse is enabled the browser process uses the file called `browser_v8_context_snapshot.bin` for its V8 snapshot. The other processes will use the V8 snapshot file that they normally do.
+
+### `grantFileProtocolExtraPrivileges`
+
+**Default:** Enabled
+**@electron/fuses:** `FuseV1Options.GrantFileProtocolExtraPrivileges`
+
+The grantFileProtocolExtraPrivileges fuse changes whether pages loaded from the `file://` protocol are given privileges beyond what they would receive in a traditional web browser.  This behavior was core to Electron apps in original versions of Electron but is no longer required as apps should be [serving local files from custom protocols](./security.md#18-avoid-usage-of-the-file-protocol-and-prefer-usage-of-custom-protocols) now instead.  If you aren't serving pages from `file://` you should disable this fuse.
+
+The extra privileges granted to the `file://` protocol by this fuse are incompletely documented below:
+
+* `file://` protocol pages can use `fetch` to load other assets over `file://`
+* `file://` protocol pages can use service workers
+* `file://` protocol pages have universal access granted to child frames also running on `file://` protocols regardless of sandbox settings
 
 ## How do I flip the fuses?
 

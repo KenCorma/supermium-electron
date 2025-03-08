@@ -39,7 +39,6 @@ extern const char kAlwaysOnTop[];
 extern const char kAcceptFirstMouse[];
 extern const char kUseContentSize[];
 extern const char kZoomToPageWidth[];
-extern const char kFullscreenWindowTitle[];
 extern const char kTitleBarStyle[];
 extern const char kTabbingIdentifier[];
 extern const char kAutoHideMenuBar[];
@@ -114,6 +113,7 @@ extern const char kBypassCSPSchemes[];
 extern const char kFetchSchemes[];
 extern const char kCORSSchemes[];
 extern const char kStreamingSchemes[];
+extern const char kCodeCacheSchemes[];
 extern const char kAppUserModelId[];
 extern const char kAppPath[];
 

@@ -99,7 +99,7 @@ const getNoteFromClerk = async (ghKey) => {
 
   const CLERK_LOGIN = 'release-clerk[bot]';
   const CLERK_NO_NOTES = '**No Release Notes**';
-  const PERSIST_LEAD = '**Release Notes Persisted**\n\n';
+  const PERSIST_LEAD = '**Release Notes Persisted**';
   const QUOTE_LEAD = '> ';
 
   for (const comment of comments.data.reverse()) {
@@ -130,6 +130,8 @@ const getNoteFromClerk = async (ghKey) => {
         .trim();
     }
   }
+
+  console.warn(`WARN: no notes found in ${buildPullURL(ghKey)}`);
 };
 
 /**
@@ -461,7 +463,7 @@ const getNotes = async (fromRef, toRef, newVersion) => {
     toBranch
   };
 
-  pool.commits.forEach(commit => {
+  for (const commit of pool.commits) {
     const str = commit.semanticType;
     if (commit.isBreakingChange) {
       notes.breaking.push(commit);
@@ -478,7 +480,7 @@ const getNotes = async (fromRef, toRef, newVersion) => {
     } else {
       notes.unknown.push(commit);
     }
-  });
+  }
 
   return notes;
 };

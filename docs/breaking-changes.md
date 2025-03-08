@@ -12,7 +12,104 @@ This document uses the following convention to categorize breaking changes:
 * **Deprecated:** An API was marked as deprecated. The API will continue to function, but will emit a deprecation warning, and will be removed in a future release.
 * **Removed:** An API or feature was removed, and is no longer supported by Electron.
 
+## Planned Breaking API Changes (30.0)
+
+### Behavior Changed: cross-origin iframes now use Permission Policy to access features
+
+Cross-origin iframes must now specify features available to a given `iframe` via the `allow`
+attribute in order to access them.
+
+See [documentation](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#allow) for
+more information.
+
+### Removed: The `--disable-color-correct-rendering` switch
+
+This switch was never formally documented but it's removal is being noted here regardless. Chromium itself now has better support for color spaces so this flag should not be needed.
+
+### Behavior Changed: `BrowserView.setAutoResize` behavior on macOS
+
+In Electron 30, BrowserView is now a wrapper around the new [WebContentsView](api/web-contents-view.md) API.
+
+Previously, the `setAutoResize` function of the `BrowserView` API was backed by [autoresizing](https://developer.apple.com/documentation/appkit/nsview/1483281-autoresizingmask?language=objc) on macOS, and by a custom algorithm on Windows and Linux.
+For simple use cases such as making a BrowserView fill the entire window, the behavior of these two approaches was identical.
+However, in more advanced cases, BrowserViews would be autoresized differently on macOS than they would be on other platforms, as the custom resizing algorithm for Windows and Linux did not perfectly match the behavior of macOS's autoresizing API.
+The autoresizing behavior is now standardized across all platforms.
+
+If your app uses `BrowserView.setAutoResize` to do anything more complex than making a BrowserView fill the entire window, it's likely you already had custom logic in place to handle this difference in behavior on macOS.
+If so, that logic will no longer be needed in Electron 30 as autoresizing behavior is consistent.
+
+### Removed: `params.inputFormType` property on `context-menu` on `WebContents`
+
+The `inputFormType` property of the params object in the `context-menu`
+event from `WebContents` has been removed. Use the new `formControlType`
+property instead.
+
+### Removed: `process.getIOCounters()`
+
+Chromium has removed access to this information.
+
+## Planned Breaking API Changes (29.0)
+
+### Behavior Changed: `ipcRenderer` can no longer be sent over the `contextBridge`
+
+Attempting to send the entire `ipcRenderer` module as an object over the `contextBridge` will now result in
+an empty object on the receiving side of the bridge. This change was made to remove / mitigate
+a security footgun. You should not directly expose ipcRenderer or its methods over the bridge.
+Instead, provide a safe wrapper like below:
+
+```js
+contextBridge.exposeInMainWorld('app', {
+  onEvent: (cb) => ipcRenderer.on('foo', (e, ...args) => cb(args))
+})
+```
+
+### Removed: `renderer-process-crashed` event on `app`
+
+The `renderer-process-crashed` event on `app` has been removed.
+Use the new `render-process-gone` event instead.
+
+```js
+// Removed
+app.on('renderer-process-crashed', (event, webContents, killed) => { /* ... */ })
+
+// Replace with
+app.on('render-process-gone', (event, webContents, details) => { /* ... */ })
+```
+
+### Removed: `crashed` event on `WebContents` and `<webview>`
+
+The `crashed` events on `WebContents` and `<webview>` have been removed.
+Use the new `render-process-gone` event instead.
+
+```js
+// Removed
+win.webContents.on('crashed', (event, killed) => { /* ... */ })
+webview.addEventListener('crashed', (event) => { /* ... */ })
+
+// Replace with
+win.webContents.on('render-process-gone', (event, details) => { /* ... */ })
+webview.addEventListener('render-process-gone', (event) => { /* ... */ })
+```
+
+### Removed: `gpu-process-crashed` event on `app`
+
+The `gpu-process-crashed` event on `app` has been removed.
+Use the new `child-process-gone` event instead.
+
+```js
+// Removed
+app.on('gpu-process-crashed', (event, killed) => { /* ... */ })
+
+// Replace with
+app.on('child-process-gone', (event, details) => { /* ... */ })
+```
+
 ## Planned Breaking API Changes (28.0)
+
+### Behavior Changed: `WebContents.backgroundThrottling` set to false affects all `WebContents` in the host `BrowserWindow`
+
+`WebContents.backgroundThrottling` set to false will disable frames throttling
+in the `BrowserWindow` for all `WebContents` displayed by it.
 
 ### Removed: `BrowserWindow.setTrafficLightPosition(position)`
 
@@ -52,6 +149,71 @@ if (ret === null) {
 }
 ```
 
+### Removed: `ipcRenderer.sendTo()`
+
+The `ipcRenderer.sendTo()` API has been removed. It should be replaced by setting up a [`MessageChannel`](tutorial/message-ports.md#setting-up-a-messagechannel-between-two-renderers) between the renderers.
+
+The `senderId` and `senderIsMainFrame` properties of `IpcRendererEvent` have been removed as well.
+
+### Removed: `app.runningUnderRosettaTranslation`
+
+The `app.runningUnderRosettaTranslation` property has been removed.
+Use `app.runningUnderARM64Translation` instead.
+
+```js
+// Removed
+console.log(app.runningUnderRosettaTranslation)
+// Replace with
+console.log(app.runningUnderARM64Translation)
+```
+
+### Deprecated: `renderer-process-crashed` event on `app`
+
+The `renderer-process-crashed` event on `app` has been deprecated.
+Use the new `render-process-gone` event instead.
+
+```js
+// Deprecated
+app.on('renderer-process-crashed', (event, webContents, killed) => { /* ... */ })
+
+// Replace with
+app.on('render-process-gone', (event, webContents, details) => { /* ... */ })
+```
+
+### Deprecated: `params.inputFormType` property on `context-menu` on `WebContents`
+
+The `inputFormType` property of the params object in the `context-menu`
+event from `WebContents` has been deprecated. Use the new `formControlType`
+property instead.
+
+### Deprecated: `crashed` event on `WebContents` and `<webview>`
+
+The `crashed` events on `WebContents` and `<webview>` have been deprecated.
+Use the new `render-process-gone` event instead.
+
+```js
+// Deprecated
+win.webContents.on('crashed', (event, killed) => { /* ... */ })
+webview.addEventListener('crashed', (event) => { /* ... */ })
+
+// Replace with
+win.webContents.on('render-process-gone', (event, details) => { /* ... */ })
+webview.addEventListener('render-process-gone', (event) => { /* ... */ })
+```
+
+### Deprecated: `gpu-process-crashed` event on `app`
+
+The `gpu-process-crashed` event on `app` has been deprecated.
+Use the new `child-process-gone` event instead.
+
+```js
+// Deprecated
+app.on('gpu-process-crashed', (event, killed) => { /* ... */ })
+
+// Replace with
+app.on('child-process-gone', (event, details) => { /* ... */ })
+```
+
 ## Planned Breaking API Changes (27.0)
 
 ### Removed: macOS 10.13 / 10.14 support
@@ -83,6 +245,69 @@ systemPreferences.on('high-contrast-color-scheme-changed', () => { /* ... */ })
 
 // Replace with
 nativeTheme.on('updated', () => { /* ... */ })
+```
+
+### Removed: Some `window.setVibrancy` options on macOS
+
+The following vibrancy options have been removed:
+
+* 'light'
+* 'medium-light'
+* 'dark'
+* 'ultra-dark'
+* 'appearance-based'
+
+These were previously deprecated and have been removed by Apple in 10.15.
+
+### Removed: `webContents.getPrinters`
+
+The `webContents.getPrinters` method has been removed. Use
+`webContents.getPrintersAsync` instead.
+
+```js
+const w = new BrowserWindow({ show: false })
+
+// Removed
+console.log(w.webContents.getPrinters())
+// Replace with
+w.webContents.getPrintersAsync().then((printers) => {
+  console.log(printers)
+})
+```
+
+### Removed: `systemPreferences.{get,set}AppLevelAppearance` and `systemPreferences.appLevelAppearance`
+
+The `systemPreferences.getAppLevelAppearance` and `systemPreferences.setAppLevelAppearance`
+methods have been removed, as well as the `systemPreferences.appLevelAppearance` property.
+Use the `nativeTheme` module instead.
+
+```js
+// Removed
+systemPreferences.getAppLevelAppearance()
+// Replace with
+nativeTheme.shouldUseDarkColors
+
+// Removed
+systemPreferences.appLevelAppearance
+// Replace with
+nativeTheme.shouldUseDarkColors
+
+// Removed
+systemPreferences.setAppLevelAppearance('dark')
+// Replace with
+nativeTheme.themeSource = 'dark'
+```
+
+### Removed: `alternate-selected-control-text` value for `systemPreferences.getColor`
+
+The `alternate-selected-control-text` value for `systemPreferences.getColor`
+has been removed. Use `selected-content-background` instead.
+
+```js
+// Removed
+systemPreferences.getColor('alternate-selected-control-text')
+// Replace with
+systemPreferences.getColor('selected-content-background')
 ```
 
 ## Planned Breaking API Changes (26.0)
@@ -413,7 +638,7 @@ The `new-window` event of `<webview>` has been removed. There is no direct repla
 webview.addEventListener('new-window', (event) => {})
 ```
 
-```javascript fiddle='docs/fiddles/ipc/webview-new-window'
+```js
 // Replace with
 
 // main.js
@@ -440,8 +665,8 @@ document.getElementById('webview').addEventListener('new-window', () => {
 ### Deprecated: BrowserWindow `scroll-touch-*` events
 
 The `scroll-touch-begin`, `scroll-touch-end` and `scroll-touch-edge` events on
-BrowserWindow are deprecated. Instead, use the newly available [`input-event`
-event](api/web-contents.md#event-input-event) on WebContents.
+BrowserWindow are deprecated. Instead, use the newly available
+[`input-event` event](api/web-contents.md#event-input-event) on WebContents.
 
 ```js
 // Deprecated
@@ -466,8 +691,8 @@ win.webContents.on('input-event', (_, event) => {
 ### Behavior Changed: V8 Memory Cage enabled
 
 The V8 memory cage has been enabled, which has implications for native modules
-which wrap non-V8 memory with `ArrayBuffer` or `Buffer`. See the [blog post
-about the V8 memory cage](https://www.electronjs.org/blog/v8-memory-cage) for
+which wrap non-V8 memory with `ArrayBuffer` or `Buffer`. See the
+[blog post about the V8 memory cage](https://www.electronjs.org/blog/v8-memory-cage) for
 more details.
 
 ### API Changed: `webContents.printToPDF()`
@@ -658,6 +883,18 @@ to open synchronously scriptable child windows, among other incompatibilities.
 
 See the documentation for [window.open in Electron](api/window-open.md)
 for more details.
+
+### Deprecated: `app.runningUnderRosettaTranslation`
+
+The `app.runningUnderRosettaTranslation` property has been deprecated.
+Use `app.runningUnderARM64Translation` instead.
+
+```js
+// Deprecated
+console.log(app.runningUnderRosettaTranslation)
+// Replace with
+console.log(app.runningUnderARM64Translation)
+```
 
 ## Planned Breaking API Changes (14.0)
 
@@ -1057,8 +1294,7 @@ const w = new BrowserWindow({
 })
 ```
 
-We [recommend moving away from the remote
-module](https://medium.com/@nornagon/electrons-remote-module-considered-harmful-70d69500f31).
+We [recommend moving away from the remote module](https://medium.com/@nornagon/electrons-remote-module-considered-harmful-70d69500f31).
 
 ### `protocol.unregisterProtocol`
 
@@ -1066,7 +1302,7 @@ module](https://medium.com/@nornagon/electrons-remote-module-considered-harmful-
 
 The APIs are now synchronous and the optional callback is no longer needed.
 
-```javascript
+```js
 // Deprecated
 protocol.unregisterProtocol(scheme, () => { /* ... */ })
 // Replace with
@@ -1095,7 +1331,7 @@ protocol.unregisterProtocol(scheme)
 
 The APIs are now synchronous and the optional callback is no longer needed.
 
-```javascript
+```js
 // Deprecated
 protocol.registerFileProtocol(scheme, handler, () => { /* ... */ })
 // Replace with
@@ -1110,7 +1346,7 @@ until navigation happens.
 This API is deprecated and users should use `protocol.isProtocolRegistered`
 and `protocol.isProtocolIntercepted` instead.
 
-```javascript
+```js
 // Deprecated
 protocol.isProtocolHandled(scheme).then(() => { /* ... */ })
 // Replace with
@@ -1218,12 +1454,11 @@ You can see the original API proposal and reasoning [here](https://github.com/el
 
 ### Behavior Changed: Values sent over IPC are now serialized with Structured Clone Algorithm
 
-The algorithm used to serialize objects sent over IPC (through
-`ipcRenderer.send`, `ipcRenderer.sendSync`, `WebContents.send` and related
-methods) has been switched from a custom algorithm to V8's built-in [Structured
-Clone Algorithm][SCA], the same algorithm used to serialize messages for
-`postMessage`. This brings about a 2x performance improvement for large
-messages, but also brings some breaking changes in behavior.
+The algorithm used to serialize objects sent over IPC (through `ipcRenderer.send`,
+`ipcRenderer.sendSync`, `WebContents.send` and related methods) has been switched from a custom
+algorithm to V8's built-in [Structured Clone Algorithm][SCA], the same algorithm used to serialize
+messages for `postMessage`. This brings about a 2x performance improvement for large messages,
+but also brings some breaking changes in behavior.
 
 * Sending Functions, Promises, WeakMaps, WeakSets, or objects containing any
   such values, over IPC will now throw an exception, instead of silently
@@ -1449,7 +1684,7 @@ folder
 └── file3
 ```
 
-In Electron <=6, this would return a `FileList` with a `File` object for:
+In Electron &lt;=6, this would return a `FileList` with a `File` object for:
 
 ```console
 path/to/folder
@@ -1730,8 +1965,8 @@ app.getGPUInfo('basic')
 When building native modules for windows, the `win_delay_load_hook` variable in
 the module's `binding.gyp` must be true (which is the default). If this hook is
 not present, then the native module will fail to load on Windows, with an error
-message like `Cannot find module`. See the [native module
-guide](./tutorial/using-native-node-modules.md) for more.
+message like `Cannot find module`.
+See the [native module guide](./tutorial/using-native-node-modules.md) for more.
 
 ### Removed: IA32 Linux support
 

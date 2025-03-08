@@ -7,20 +7,27 @@
 #include <memory>
 #include <utility>
 
+#include "base/command_line.h"
 #include "base/strings/pattern.h"
+#include "base/types/expected_macros.h"
 #include "chrome/common/url_constants.h"
 #include "components/url_formatter/url_fixer.h"
 #include "content/public/browser/navigation_entry.h"
 #include "extensions/browser/extension_api_frame_id_map.h"
+#include "extensions/browser/extension_prefs.h"
 #include "extensions/common/error_utils.h"
+#include "extensions/common/extension_features.h"
+#include "extensions/common/feature_switch.h"
 #include "extensions/common/manifest_constants.h"
 #include "extensions/common/mojom/host_id.mojom.h"
 #include "extensions/common/permissions/permissions_data.h"
+#include "extensions/common/switches.h"
 #include "shell/browser/api/electron_api_web_contents.h"
 #include "shell/browser/native_window.h"
 #include "shell/browser/web_contents_zoom_controller.h"
 #include "shell/browser/window_list.h"
 #include "shell/common/extensions/api/tabs.h"
+#include "third_party/blink/public/common/chrome_debug_urls.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "url/gurl.h"
 
@@ -43,20 +50,20 @@ void ZoomModeToZoomSettings(WebContentsZoomController::ZoomMode zoom_mode,
   DCHECK(zoom_settings);
   switch (zoom_mode) {
     case WebContentsZoomController::ZOOM_MODE_DEFAULT:
-      zoom_settings->mode = api::tabs::ZOOM_SETTINGS_MODE_AUTOMATIC;
-      zoom_settings->scope = api::tabs::ZOOM_SETTINGS_SCOPE_PER_ORIGIN;
+      zoom_settings->mode = api::tabs::ZoomSettingsMode::kAutomatic;
+      zoom_settings->scope = api::tabs::ZoomSettingsScope::kPerOrigin;
       break;
     case WebContentsZoomController::ZOOM_MODE_ISOLATED:
-      zoom_settings->mode = api::tabs::ZOOM_SETTINGS_MODE_AUTOMATIC;
-      zoom_settings->scope = api::tabs::ZOOM_SETTINGS_SCOPE_PER_TAB;
+      zoom_settings->mode = api::tabs::ZoomSettingsMode::kAutomatic;
+      zoom_settings->scope = api::tabs::ZoomSettingsScope::kPerTab;
       break;
     case WebContentsZoomController::ZOOM_MODE_MANUAL:
-      zoom_settings->mode = api::tabs::ZOOM_SETTINGS_MODE_MANUAL;
-      zoom_settings->scope = api::tabs::ZOOM_SETTINGS_SCOPE_PER_TAB;
+      zoom_settings->mode = api::tabs::ZoomSettingsMode::kManual;
+      zoom_settings->scope = api::tabs::ZoomSettingsScope::kPerTab;
       break;
     case WebContentsZoomController::ZOOM_MODE_DISABLED:
-      zoom_settings->mode = api::tabs::ZOOM_SETTINGS_MODE_DISABLED;
-      zoom_settings->scope = api::tabs::ZOOM_SETTINGS_SCOPE_PER_TAB;
+      zoom_settings->mode = api::tabs::ZoomSettingsMode::kDisabled;
+      zoom_settings->scope = api::tabs::ZoomSettingsScope::kPerTab;
       break;
   }
 }
@@ -64,7 +71,7 @@ void ZoomModeToZoomSettings(WebContentsZoomController::ZoomMode zoom_mode,
 // Returns true if either |boolean| is disengaged, or if |boolean| and
 // |value| are equal. This function is used to check if a tab's parameters match
 // those of the browser.
-bool MatchesBool(const absl::optional<bool>& boolean, bool value) {
+bool MatchesBool(const std::optional<bool>& boolean, bool value) {
   return !boolean || *boolean == value;
 }
 
@@ -72,7 +79,7 @@ api::tabs::MutedInfo CreateMutedInfo(content::WebContents* contents) {
   DCHECK(contents);
   api::tabs::MutedInfo info;
   info.muted = contents->IsAudioMuted();
-  info.reason = api::tabs::MUTED_INFO_REASON_USER;
+  info.reason = api::tabs::MutedInfoReason::kUser;
   return info;
 }
 
@@ -104,8 +111,8 @@ ExecuteCodeFunction::InitResult ExecuteCodeInTabFunction::Init() {
   const base::Value& details_value = args()[1];
   if (!details_value.is_dict())
     return set_init_result(VALIDATION_FAILURE);
-  std::unique_ptr<InjectDetails> details(new InjectDetails());
-  if (!InjectDetails::Populate(details_value.GetDict(), *details)) {
+  auto details = InjectDetails::FromValue(details_value.GetDict());
+  if (!details) {
     return set_init_result(VALIDATION_FAILURE);
   }
 
@@ -203,7 +210,7 @@ bool TabsExecuteScriptFunction::ShouldRemoveCSS() const {
 }
 
 ExtensionFunction::ResponseAction TabsReloadFunction::Run() {
-  absl::optional<tabs::Reload::Params> params =
+  std::optional<tabs::Reload::Params> params =
       tabs::Reload::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -226,7 +233,7 @@ ExtensionFunction::ResponseAction TabsReloadFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction TabsQueryFunction::Run() {
-  absl::optional<tabs::Query::Params> params =
+  std::optional<tabs::Query::Params> params =
       tabs::Query::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -248,8 +255,8 @@ ExtensionFunction::ResponseAction TabsQueryFunction::Run() {
   }
 
   std::string title = params->query_info.title.value_or(std::string());
-  absl::optional<bool> audible = params->query_info.audible;
-  absl::optional<bool> muted = params->query_info.muted;
+  std::optional<bool> audible = params->query_info.audible;
+  std::optional<bool> muted = params->query_info.muted;
 
   base::Value::List result;
 
@@ -314,7 +321,7 @@ ExtensionFunction::ResponseAction TabsQueryFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction TabsGetFunction::Run() {
-  absl::optional<tabs::Get::Params> params = tabs::Get::Params::Create(args());
+  std::optional<tabs::Get::Params> params = tabs::Get::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
   int tab_id = params->tab_id;
 
@@ -342,7 +349,7 @@ ExtensionFunction::ResponseAction TabsGetFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction TabsSetZoomFunction::Run() {
-  absl::optional<tabs::SetZoom::Params> params =
+  std::optional<tabs::SetZoom::Params> params =
       tabs::SetZoom::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -362,7 +369,7 @@ ExtensionFunction::ResponseAction TabsSetZoomFunction::Run() {
       params->zoom_factor > 0
           ? blink::PageZoomFactorToZoomLevel(params->zoom_factor)
           : blink::PageZoomFactorToZoomLevel(
-                zoom_controller->GetDefaultZoomFactor());
+                zoom_controller->default_zoom_factor());
 
   zoom_controller->SetZoomLevel(zoom_level);
 
@@ -370,7 +377,7 @@ ExtensionFunction::ResponseAction TabsSetZoomFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction TabsGetZoomFunction::Run() {
-  absl::optional<tabs::GetZoomSettings::Params> params =
+  std::optional<tabs::GetZoomSettings::Params> params =
       tabs::GetZoomSettings::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -386,7 +393,7 @@ ExtensionFunction::ResponseAction TabsGetZoomFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction TabsGetZoomSettingsFunction::Run() {
-  absl::optional<tabs::GetZoomSettings::Params> params =
+  std::optional<tabs::GetZoomSettings::Params> params =
       tabs::GetZoomSettings::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -410,7 +417,7 @@ ExtensionFunction::ResponseAction TabsGetZoomSettingsFunction::Run() {
 ExtensionFunction::ResponseAction TabsSetZoomSettingsFunction::Run() {
   using tabs::ZoomSettings;
 
-  absl::optional<tabs::SetZoomSettings::Params> params =
+  std::optional<tabs::SetZoomSettings::Params> params =
       tabs::SetZoomSettings::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -425,9 +432,9 @@ ExtensionFunction::ResponseAction TabsSetZoomSettingsFunction::Run() {
     return RespondNow(Error(error));
 
   // "per-origin" scope is only available in "automatic" mode.
-  if (params->zoom_settings.scope == tabs::ZOOM_SETTINGS_SCOPE_PER_ORIGIN &&
-      params->zoom_settings.mode != tabs::ZOOM_SETTINGS_MODE_AUTOMATIC &&
-      params->zoom_settings.mode != tabs::ZOOM_SETTINGS_MODE_NONE) {
+  if (params->zoom_settings.scope == tabs::ZoomSettingsScope::kPerOrigin &&
+      params->zoom_settings.mode != tabs::ZoomSettingsMode::kAutomatic &&
+      params->zoom_settings.mode != tabs::ZoomSettingsMode::kNone) {
     return RespondNow(Error(kPerOriginOnlyInAutomaticError));
   }
 
@@ -436,21 +443,21 @@ ExtensionFunction::ResponseAction TabsSetZoomSettingsFunction::Run() {
   WebContentsZoomController::ZoomMode zoom_mode =
       WebContentsZoomController::ZOOM_MODE_DEFAULT;
   switch (params->zoom_settings.mode) {
-    case tabs::ZOOM_SETTINGS_MODE_NONE:
-    case tabs::ZOOM_SETTINGS_MODE_AUTOMATIC:
+    case tabs::ZoomSettingsMode::kNone:
+    case tabs::ZoomSettingsMode::kAutomatic:
       switch (params->zoom_settings.scope) {
-        case tabs::ZOOM_SETTINGS_SCOPE_NONE:
-        case tabs::ZOOM_SETTINGS_SCOPE_PER_ORIGIN:
+        case tabs::ZoomSettingsScope::kNone:
+        case tabs::ZoomSettingsScope::kPerOrigin:
           zoom_mode = WebContentsZoomController::ZOOM_MODE_DEFAULT;
           break;
-        case tabs::ZOOM_SETTINGS_SCOPE_PER_TAB:
+        case tabs::ZoomSettingsScope::kPerTab:
           zoom_mode = WebContentsZoomController::ZOOM_MODE_ISOLATED;
       }
       break;
-    case tabs::ZOOM_SETTINGS_MODE_MANUAL:
+    case tabs::ZoomSettingsMode::kManual:
       zoom_mode = WebContentsZoomController::ZOOM_MODE_MANUAL;
       break;
-    case tabs::ZOOM_SETTINGS_MODE_DISABLED:
+    case tabs::ZoomSettingsMode::kDisabled:
       zoom_mode = WebContentsZoomController::ZOOM_MODE_DISABLED;
   }
 
@@ -458,6 +465,8 @@ ExtensionFunction::ResponseAction TabsSetZoomSettingsFunction::Run() {
 
   return RespondNow(NoArguments());
 }
+
+namespace {
 
 bool IsKillURL(const GURL& url) {
 #if DCHECK_IS_ON()
@@ -468,17 +477,25 @@ bool IsKillURL(const GURL& url) {
     DCHECK(url.IsAboutBlank() || url.IsAboutSrcdoc());
 #endif
 
-  static const char* const kill_hosts[] = {
-      chrome::kChromeUICrashHost,         chrome::kChromeUIDelayedHangUIHost,
-      chrome::kChromeUIHangUIHost,        chrome::kChromeUIKillHost,
+  // Disallow common renderer debug URLs.
+  // Note: this would also disallow JavaScript URLs, but we already explicitly
+  // check for those before calling into here from PrepareURLForNavigation.
+  if (blink::IsRendererDebugURL(url)) {
+    return true;
+  }
+
+  if (!url.SchemeIs(content::kChromeUIScheme)) {
+    return false;
+  }
+
+  // Also disallow a few more hosts which are not covered by the check above.
+  static const char* const kKillHosts[] = {
+      chrome::kChromeUIDelayedHangUIHost, chrome::kChromeUIHangUIHost,
       chrome::kChromeUIQuitHost,          chrome::kChromeUIRestartHost,
       content::kChromeUIBrowserCrashHost, content::kChromeUIMemoryExhaustHost,
   };
 
-  if (!url.SchemeIs(content::kChromeUIScheme))
-    return false;
-
-  return base::Contains(kill_hosts, url.host_piece());
+  return base::Contains(kKillHosts, url.host_piece());
 }
 
 GURL ResolvePossiblyRelativeURL(const std::string& url_string,
@@ -489,10 +506,18 @@ GURL ResolvePossiblyRelativeURL(const std::string& url_string,
 
   return url;
 }
-bool PrepareURLForNavigation(const std::string& url_string,
-                             const Extension* extension,
-                             GURL* return_url,
-                             std::string* error) {
+
+bool AllowFileAccess(const ExtensionId& extension_id,
+                     content::BrowserContext* context) {
+  return base::CommandLine::ForCurrentProcess()->HasSwitch(
+             switches::kDisableExtensionsFileAccessCheck) ||
+         ExtensionPrefs::Get(context)->AllowFileAccess(extension_id);
+}
+
+base::expected<GURL, std::string> PrepareURLForNavigation(
+    const std::string& url_string,
+    const Extension* extension,
+    content::BrowserContext* browser_context) {
   GURL url = ResolvePossiblyRelativeURL(url_string, extension);
 
   // Ideally, the URL would only be "fixed" for user input (e.g. for URLs
@@ -504,40 +529,70 @@ bool PrepareURLForNavigation(const std::string& url_string,
   // Reject invalid URLs.
   if (!url.is_valid()) {
     const char kInvalidUrlError[] = "Invalid url: \"*\".";
-    *error = ErrorUtils::FormatErrorMessage(kInvalidUrlError, url_string);
-    return false;
+    return base::unexpected(
+        ErrorUtils::FormatErrorMessage(kInvalidUrlError, url_string));
+  }
+
+  // Don't let the extension use JavaScript URLs in API triggered navigations.
+  if (url.SchemeIs(url::kJavaScriptScheme)) {
+    const char kJavaScriptUrlsNotAllowedInExtensionNavigations[] =
+        "JavaScript URLs are not allowed in API based extension navigations. "
+        "Use "
+        "chrome.scripting.executeScript instead.";
+    return base::unexpected(kJavaScriptUrlsNotAllowedInExtensionNavigations);
   }
 
   // Don't let the extension crash the browser or renderers.
   if (IsKillURL(url)) {
     const char kNoCrashBrowserError[] =
         "I'm sorry. I'm afraid I can't do that.";
-    *error = kNoCrashBrowserError;
-    return false;
+    return base::unexpected(kNoCrashBrowserError);
   }
 
   // Don't let the extension navigate directly to devtools scheme pages, unless
   // they have applicable permissions.
-  if (url.SchemeIs(content::kChromeDevToolsScheme) &&
-      !(extension->permissions_data()->HasAPIPermission(
-            extensions::mojom::APIPermissionID::kDevtools) ||
-        extension->permissions_data()->HasAPIPermission(
-            extensions::mojom::APIPermissionID::kDebugger))) {
-    const char kCannotNavigateToDevtools[] =
-        "Cannot navigate to a devtools:// page without either the devtools or "
-        "debugger permission.";
-    *error = kCannotNavigateToDevtools;
-    return false;
+  if (url.SchemeIs(content::kChromeDevToolsScheme)) {
+    bool has_permission =
+        extension && (extension->permissions_data()->HasAPIPermission(
+                          mojom::APIPermissionID::kDevtools) ||
+                      extension->permissions_data()->HasAPIPermission(
+                          mojom::APIPermissionID::kDebugger));
+    if (!has_permission) {
+      const char kCannotNavigateToDevtools[] =
+          "Cannot navigate to a devtools:// page without either the devtools "
+          "or "
+          "debugger permission.";
+      return base::unexpected(kCannotNavigateToDevtools);
+    }
   }
 
-  return_url->Swap(&url);
-  return true;
+  // Don't let the extension navigate directly to chrome-untrusted scheme pages.
+  if (url.SchemeIs(content::kChromeUIUntrustedScheme)) {
+    const char kCannotNavigateToChromeUntrusted[] =
+        "Cannot navigate to a chrome-untrusted:// page.";
+    return base::unexpected(kCannotNavigateToChromeUntrusted);
+  }
+
+  // Don't let the extension navigate directly to file scheme pages, unless
+  // they have file access.
+  if (url.SchemeIsFile() &&
+      !AllowFileAccess(extension->id(), browser_context) &&
+      base::FeatureList::IsEnabled(
+          extensions_features::kRestrictFileURLNavigation)) {
+    const char kFileUrlsNotAllowedInExtensionNavigations[] =
+        "Cannot navigate to a file URL without local file access.";
+    return base::unexpected(kFileUrlsNotAllowedInExtensionNavigations);
+  }
+
+  return url;
 }
+
+}  // namespace
 
 TabsUpdateFunction::TabsUpdateFunction() : web_contents_(nullptr) {}
 
 ExtensionFunction::ResponseAction TabsUpdateFunction::Run() {
-  absl::optional<tabs::Update::Params> params =
+  std::optional<tabs::Update::Params> params =
       tabs::Update::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -566,22 +621,14 @@ ExtensionFunction::ResponseAction TabsUpdateFunction::Run() {
 bool TabsUpdateFunction::UpdateURL(const std::string& url_string,
                                    int tab_id,
                                    std::string* error) {
-  GURL url;
-  if (!PrepareURLForNavigation(url_string, extension(), &url, error)) {
+  auto url =
+      PrepareURLForNavigation(url_string, extension(), browser_context());
+  if (!url.has_value()) {
+    *error = std::move(url.error());
     return false;
   }
 
-  const bool is_javascript_scheme = url.SchemeIs(url::kJavaScriptScheme);
-  // JavaScript URLs are forbidden in chrome.tabs.update().
-  if (is_javascript_scheme) {
-    const char kJavaScriptUrlsNotAllowedInTabsUpdate[] =
-        "JavaScript URLs are not allowed in chrome.tabs.update. Use "
-        "chrome.tabs.executeScript instead.";
-    *error = kJavaScriptUrlsNotAllowedInTabsUpdate;
-    return false;
-  }
-
-  content::NavigationController::LoadURLParams load_params(url);
+  content::NavigationController::LoadURLParams load_params(*url);
 
   // Treat extension-initiated navigations as renderer-initiated so that the URL
   // does not show in the omnibox until it commits.  This avoids URL spoofs

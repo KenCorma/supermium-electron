@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "base/files/file_path.h"
@@ -27,7 +28,6 @@
 #include "extensions/browser/api/app_runtime/app_runtime_api.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/management_policy.h"
-#include "extensions/browser/notification_types.h"
 #include "extensions/browser/null_app_sorting.h"
 #include "extensions/browser/quota_service.h"
 #include "extensions/browser/service_worker_manager.h"
@@ -94,9 +94,10 @@ void ElectronExtensionSystem::InitForRegularProfile(bool extensions_enabled) {
 }
 
 std::unique_ptr<base::Value::Dict> ParseManifest(
-    base::StringPiece manifest_contents) {
+    const std::string_view manifest_contents) {
   JSONStringValueDeserializer deserializer(manifest_contents);
-  std::unique_ptr<base::Value> manifest = deserializer.Deserialize(NULL, NULL);
+  std::unique_ptr<base::Value> manifest =
+      deserializer.Deserialize(nullptr, nullptr);
 
   if (!manifest.get() || !manifest->is_dict()) {
     LOG(ERROR) << "Failed to parse extension manifest.";

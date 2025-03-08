@@ -14,8 +14,8 @@ const ROLLER_BRANCH_PATTERN = /^roller\/chromium$/;
 
 const DEFAULT_BUILD_CLOUD_ID = '1598';
 const DEFAULT_BUILD_CLOUD = 'electronhq-16-core';
-const DEFAULT_BAKE_BASE_IMAGE = 'e-112.0.5607.0-vs2022';
-const DEFAULT_BUILD_IMAGE = 'e-112.0.5607.0-vs2022';
+const DEFAULT_BAKE_BASE_IMAGE = 'base-bake-image';
+const DEFAULT_BUILD_IMAGE = 'base-bake-image';
 
 const appveyorBakeJob = 'electron-bake-image';
 const appVeyorJobs = {
@@ -70,7 +70,14 @@ async function checkAppVeyorImage (options) {
     const { cloudSettings } = settings;
     return cloudSettings.images.find(image => image.name === `${options.imageVersion}`) || null;
   } catch (err) {
-    console.log('Could not call AppVeyor: ', err);
+    if (err.response?.body) {
+      console.error('Could not call AppVeyor: ', {
+        statusCode: err.response.statusCode,
+        body: JSON.parse(err.response.body)
+      });
+    } else {
+      console.error('Error calling AppVeyor:', err);
+    }
   }
 }
 
@@ -94,7 +101,9 @@ function useAppVeyorImage (targetBranch, options) {
     assert(validJobs.includes(options.job), `Unknown AppVeyor CI job name: ${options.job}.  Valid values are: ${validJobs}.`);
     callAppVeyorBuildJobs(targetBranch, options.job, options);
   } else {
-    validJobs.forEach((job) => callAppVeyorBuildJobs(targetBranch, job, options));
+    for (const job of validJobs) {
+      callAppVeyorBuildJobs(targetBranch, job, options);
+    }
   }
 }
 
@@ -108,7 +117,6 @@ async function callAppVeyorBuildJobs (targetBranch, job, options) {
     ELECTRON_OUT_DIR: 'Default',
     ELECTRON_ENABLE_STACK_DUMPING: 1,
     ELECTRON_ALSO_LOG_TO_STDERR: 1,
-    GOMA_FALLBACK_ON_AUTH_FAILURE: true,
     DEPOT_TOOLS_WIN_TOOLCHAIN: 0,
     PYTHONIOENCODING: 'UTF-8'
   };

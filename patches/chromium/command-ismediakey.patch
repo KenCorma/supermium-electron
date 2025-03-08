@@ -87,21 +87,33 @@ index 943168e2c72c0aeb59f1ea21b14f2dc8e6cfd7e0..db3ca2ed0ba0994caa4d26436b942166
    // Create an observer that registers a hot key for |accelerator|.
    std::unique_ptr<gfx::SingletonHwndHotKeyObserver> observer =
 diff --git a/content/browser/media/media_keys_listener_manager_impl.cc b/content/browser/media/media_keys_listener_manager_impl.cc
-index e5d2d8d5061926ca0507a6d1f5cc1d7ee29a8cb4..169a009fd62d677955ac67df086dd658f902560c 100644
+index 47a0cdee2c7c24d25705c32fdeaf4302354d5faa..259e7814d1f01a8f3c4786433fc8fc70eb14bc72 100644
 --- a/content/browser/media/media_keys_listener_manager_impl.cc
 +++ b/content/browser/media/media_keys_listener_manager_impl.cc
-@@ -298,6 +298,11 @@ void MediaKeysListenerManagerImpl::UpdateSystemMediaControlsEnabledControls() {
-       case ui::VKEY_MEDIA_STOP:
-         system_media_controls_->SetIsStopEnabled(should_enable);
-         break;
-+      case ui::VKEY_VOLUME_DOWN:
-+      case ui::VKEY_VOLUME_UP:
-+      case ui::VKEY_VOLUME_MUTE:
-+        // Do nothing.
-+        break;
-       default:
-         NOTREACHED();
-     }
+@@ -405,6 +405,11 @@ void MediaKeysListenerManagerImpl::UpdateSystemMediaControlsEnabledControls() {
+         case ui::VKEY_MEDIA_STOP:
+           browser_system_media_controls_->SetIsStopEnabled(should_enable);
+           break;
++        case ui::VKEY_VOLUME_DOWN:
++        case ui::VKEY_VOLUME_UP:
++        case ui::VKEY_VOLUME_MUTE:
++          // Do nothing.
++          break;
+         default:
+           NOTREACHED();
+       }
+@@ -447,6 +452,11 @@ void MediaKeysListenerManagerImpl::UpdateSystemMediaControlsEnabledControls() {
+         case ui::VKEY_MEDIA_STOP:
+           smc->SetIsStopEnabled(should_enable);
+           break;
++        case ui::VKEY_VOLUME_DOWN:
++        case ui::VKEY_VOLUME_UP:
++        case ui::VKEY_VOLUME_MUTE:
++          // Do nothing.
++          break;
+         default:
+           NOTREACHED();
+       }
 diff --git a/ui/base/accelerators/media_keys_listener.cc b/ui/base/accelerators/media_keys_listener.cc
 index db596585cbb44b3710636e3fc013f288966f604f..6d5557ee1a2c35ee15e695e024834184a525e2a7 100644
 --- a/ui/base/accelerators/media_keys_listener.cc
@@ -117,7 +129,7 @@ index db596585cbb44b3710636e3fc013f288966f604f..6d5557ee1a2c35ee15e695e024834184
  
  }  // namespace ui
 diff --git a/ui/base/accelerators/media_keys_listener_mac.mm b/ui/base/accelerators/media_keys_listener_mac.mm
-index 7eb89675a7bb3f22aefc1fb843d7e68554a165fd..bd783a0bfd92c3f9b5553a6480d258c2528ee740 100644
+index a955d19eedfe56ae3a115ce4c77fea016fd66d49..ad2557495a02cae03dd2b87df8659a6f05f1beac 100644
 --- a/ui/base/accelerators/media_keys_listener_mac.mm
 +++ b/ui/base/accelerators/media_keys_listener_mac.mm
 @@ -32,6 +32,12 @@ KeyboardCode MediaKeyCodeToKeyboardCode(int key_code) {

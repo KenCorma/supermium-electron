@@ -32,7 +32,7 @@ In most cases, you should do everything in the `ready` event handler.
 Returns:
 
 * `event` Event
-* `launchInfo` Record<string, any> | [NotificationResponse](structures/notification-response.md) _macOS_
+* `launchInfo` Record\<string, any\> | [NotificationResponse](structures/notification-response.md) _macOS_
 
 Emitted once, when Electron has finished initializing. On macOS, `launchInfo`
 holds the `userInfo` of the [`NSUserNotification`](https://developer.apple.com/documentation/foundation/nsusernotification)
@@ -40,6 +40,10 @@ or information from [`UNNotificationResponse`](https://developer.apple.com/docum
 that was used to open the application, if it was launched from Notification Center.
 You can also call `app.isReady()` to check if this event has already fired and `app.whenReady()`
 to get a Promise that is fulfilled when Electron is initialized.
+
+**Note**: The `ready` event is only fired after the main process has finished running the first
+tick of the event loop. If an Electron API needs to be called before the `ready` event, ensure
+that it is called synchronously in the top-level context of the main process.
 
 ### Event: 'window-all-closed'
 
@@ -376,35 +380,6 @@ page.
 ### Event: 'gpu-info-update'
 
 Emitted whenever there is a GPU info update.
-
-### Event: 'gpu-process-crashed' _Deprecated_
-
-Returns:
-
-* `event` Event
-* `killed` boolean
-
-Emitted when the GPU process crashes or is killed.
-
-**Deprecated:** This event is superceded by the `child-process-gone` event
-which contains more information about why the child process disappeared. It
-isn't always because it crashed. The `killed` boolean can be replaced by
-checking `reason === 'killed'` when you switch to that event.
-
-### Event: 'renderer-process-crashed' _Deprecated_
-
-Returns:
-
-* `event` Event
-* `webContents` [WebContents](web-contents.md)
-* `killed` boolean
-
-Emitted when the renderer process of `webContents` crashes or is killed.
-
-**Deprecated:** This event is superceded by the `render-process-gone` event
-which contains more information about why the render process disappeared. It
-isn't always because it crashed.  The `killed` boolean can be replaced by
-checking `reason === 'killed'` when you switch to that event.
 
 ### Event: 'render-process-gone'
 
@@ -999,7 +974,7 @@ app.setJumpList([
 
 ### `app.requestSingleInstanceLock([additionalData])`
 
-* `additionalData` Record<any, any> (optional) - A JSON object containing additional data to send to the first instance.
+* `additionalData` Record\<any, any\> (optional) - A JSON object containing additional data to send to the first instance.
 
 Returns `boolean`
 
@@ -1134,11 +1109,11 @@ indicates success while any other value indicates failure according to Chromium 
     resolver will attempt to use the system's DNS settings to do DNS lookups
     itself. Enabled by default on macOS, disabled by default on Windows and
     Linux.
-  * `secureDnsMode` string (optional) - Can be "off", "automatic" or "secure".
-    Configures the DNS-over-HTTP mode. When "off", no DoH lookups will be
-    performed. When "automatic", DoH lookups will be performed first if DoH is
+  * `secureDnsMode` string (optional) - Can be 'off', 'automatic' or 'secure'.
+    Configures the DNS-over-HTTP mode. When 'off', no DoH lookups will be
+    performed. When 'automatic', DoH lookups will be performed first if DoH is
     available, and insecure DNS lookups will be performed as a fallback. When
-    "secure", only DoH lookups will be performed. Defaults to "automatic".
+    'secure', only DoH lookups will be performed. Defaults to 'automatic'.
   * `secureDnsServers` string[]&#32;(optional) - A list of DNS-over-HTTP
     server templates. See [RFC8484 § 3][] for details on the template format.
     Most servers support the POST method; the template for such servers is
@@ -1278,10 +1253,10 @@ Returns `boolean` - Whether the current desktop environment is Unity launcher.
 ### `app.getLoginItemSettings([options])` _macOS_ _Windows_
 
 * `options` Object (optional)
-  * `path` string (optional) _Windows_ - The executable path to compare against.
-    Defaults to `process.execPath`.
-  * `args` string[] (optional) _Windows_ - The command-line arguments to compare
-    against. Defaults to an empty array.
+  * `type` string (optional) _macOS_ - Can be one of `mainAppService`, `agentService`, `daemonService`, or `loginItemService`. Defaults to `mainAppService`. Only available on macOS 13 and up. See [app.setLoginItemSettings](app.md#appsetloginitemsettingssettings-macos-windows) for more information about each type.
+  * `serviceName` string (optional) _macOS_ - The name of the service. Required if `type` is non-default. Only available on macOS 13 and up.
+  * `path` string (optional) _Windows_ - The executable path to compare against. Defaults to `process.execPath`.
+  * `args` string[] (optional) _Windows_ - The command-line arguments to compare against. Defaults to an empty array.
 
 If you provided `path` and `args` options to `app.setLoginItemSettings`, then you
 need to pass the same arguments here for `openAtLogin` to be set correctly.
@@ -1289,17 +1264,11 @@ need to pass the same arguments here for `openAtLogin` to be set correctly.
 Returns `Object`:
 
 * `openAtLogin` boolean - `true` if the app is set to open at login.
-* `openAsHidden` boolean _macOS_ - `true` if the app is set to open as hidden at login.
-  This setting is not available on [MAS builds][mas-builds].
-* `wasOpenedAtLogin` boolean _macOS_ - `true` if the app was opened at login
-  automatically. This setting is not available on [MAS builds][mas-builds].
-* `wasOpenedAsHidden` boolean _macOS_ - `true` if the app was opened as a hidden login
-  item. This indicates that the app should not open any windows at startup.
-  This setting is not available on [MAS builds][mas-builds].
-* `restoreState` boolean _macOS_ - `true` if the app was opened as a login item that
-  should restore the state from the previous session. This indicates that the
-  app should restore the windows that were open the last time the app was
-  closed. This setting is not available on [MAS builds][mas-builds].
+* `openAsHidden` boolean _macOS_ _Deprecated_ - `true` if the app is set to open as hidden at login. This does not work on macOS 13 and up.
+* `wasOpenedAtLogin` boolean _macOS_ - `true` if the app was opened at login automatically.
+* `wasOpenedAsHidden` boolean _macOS_ _Deprecated_ - `true` if the app was opened as a hidden login item. This indicates that the app should not open any windows at startup. This setting is not available on [MAS builds][mas-builds] or on macOS 13 and up.
+* `restoreState` boolean _macOS_ _Deprecated_ - `true` if the app was opened as a login item that should restore the state from the previous session. This indicates that the app should restore the windows that were open the last time the app was closed. This setting is not available on [MAS builds][mas-builds] or on macOS 13 and up.
+* `status` string _macOS_ - can be one of `not-registered`, `enabled`, `requires-approval`, or `not-found`.
 * `executableWillLaunchAtLogin` boolean _Windows_ - `true` if app is set to open at login and its run key is not deactivated. This differs from `openAtLogin` as it ignores the `args` option, this property will be true if the given executable would be launched at login with **any** arguments.
 * `launchItems` Object[] _Windows_
   * `name` string _Windows_ - name value of a registry entry.
@@ -1313,10 +1282,13 @@ Returns `Object`:
 * `settings` Object
   * `openAtLogin` boolean (optional) - `true` to open the app at login, `false` to remove
     the app as a login item. Defaults to `false`.
-  * `openAsHidden` boolean (optional) _macOS_ - `true` to open the app as hidden. Defaults to
-    `false`. The user can edit this setting from the System Preferences so
-    `app.getLoginItemSettings().wasOpenedAsHidden` should be checked when the app
-    is opened to know the current value. This setting is not available on [MAS builds][mas-builds].
+  * `openAsHidden` boolean (optional) _macOS_ _Deprecated_ - `true` to open the app as hidden. Defaults to `false`. The user can edit this setting from the System Preferences so `app.getLoginItemSettings().wasOpenedAsHidden` should be checked when the app is opened to know the current value. This setting is not available on [MAS builds][mas-builds] or on macOS 13 and up.
+  * `type` string (optional) _macOS_ - The type of service to add as a login item. Defaults to `mainAppService`. Only available on macOS 13 and up.
+    * `mainAppService` - The primary application.
+    * `agentService` - The property list name for a launch agent. The property list name must correspond to a property list in the app’s `Contents/Library/LaunchAgents` directory.
+    * `daemonService` string (optional) _macOS_ - The property list name for a launch agent. The property list name must correspond to a property list in the app’s `Contents/Library/LaunchDaemons` directory.
+    * `loginItemService` string (optional) _macOS_ - The property list name for a login item service. The property list name must correspond to a property list in the app’s `Contents/Library/LoginItems` directory.
+  * `serviceName` string (optional) _macOS_ - The name of the service. Required if `type` is non-default. Only available on macOS 13 and up.
   * `path` string (optional) _Windows_ - The executable to launch at login.
     Defaults to `process.execPath`.
   * `args` string[] (optional) _Windows_ - The command-line arguments to pass to
@@ -1325,6 +1297,7 @@ Returns `Object`:
   * `enabled` boolean (optional) _Windows_ - `true` will change the startup approved registry key and `enable / disable` the App in Task Manager and Windows Settings.
     Defaults to `true`.
   * `name` string (optional) _Windows_ - value name to write into registry. Defaults to the app's AppUserModelId().
+
 Set the app's login item settings.
 
 To work with Electron's `autoUpdater` on Windows, which uses [Squirrel][Squirrel-Windows],
@@ -1333,7 +1306,7 @@ application name. For example:
 
 ``` js
 const { app } = require('electron')
-const path = require('path')
+const path = require('node:path')
 
 const appFolder = path.dirname(process.execPath)
 const updateExe = path.resolve(appFolder, '..', 'Update.exe')
@@ -1348,6 +1321,8 @@ app.setLoginItemSettings({
   ]
 })
 ```
+
+For more information about setting different services as login items on macOS 13 and up, see [`SMAppService`](https://developer.apple.com/documentation/servicemanagement/smappservice?language=objc).
 
 ### `app.isAccessibilitySupportEnabled()` _macOS_ _Windows_
 
@@ -1382,7 +1357,7 @@ Show the app's about panel options. These options can be overridden with `app.se
   * `credits` string (optional) _macOS_ _Windows_ - Credit information.
   * `authors` string[] (optional) _Linux_ - List of app authors.
   * `website` string (optional) _Linux_ - The app's website.
-  * `iconPath` string (optional) _Linux_ _Windows_ - Path to the app's icon in a JPEG or PNG file format. On Linux, will be shown as 64x64 pixels while retaining aspect ratio.
+  * `iconPath` string (optional) _Linux_ _Windows_ - Path to the app's icon in a JPEG or PNG file format. On Linux, will be shown as 64x64 pixels while retaining aspect ratio. On Windows, a 48x48 PNG will result in the best visual quality.
 
 Set the about panel options. This will override the values defined in the app's `.plist` file on macOS. See the [Apple docs][about-panel-options] for more details. On Linux, values must be set in order to be shown; there are no defaults.
 
@@ -1404,7 +1379,7 @@ Returns `Function` - This function **must** be called once you have finished acc
 
 ```js
 const { app, dialog } = require('electron')
-const fs = require('fs')
+const fs = require('node:fs')
 
 let filepath
 let bookmark
@@ -1496,6 +1471,24 @@ details.
 
 **Note:** Enable `Secure Keyboard Entry` only when it is needed and disable it when it is no longer needed.
 
+### `app.setProxy(config)`
+
+* `config` [ProxyConfig](structures/proxy-config.md)
+
+Returns `Promise<void>` - Resolves when the proxy setting process is complete.
+
+Sets the proxy settings for networks requests made without an associated [Session](session.md).
+Currently this will affect requests made with [Net](net.md) in the [utility process](../glossary.md#utility-process)
+and internal requests made by the runtime (ex: geolocation queries).
+
+This method can only be called after app is ready.
+
+#### `app.resolveProxy(url)`
+
+* `url` URL
+
+Returns `Promise<string>` - Resolves with the proxy information for `url` that will be used when attempting to make requests using [Net](net.md) in the [utility process](../glossary.md#utility-process).
+
 ## Properties
 
 ### `app.accessibilitySupportEnabled` _macOS_ _Windows_
@@ -1542,7 +1535,7 @@ A `boolean` property that returns  `true` if the app is packaged, `false` otherw
 [tasks]:https://learn.microsoft.com/en-us/windows/win32/shell/taskbar-extensions#tasks
 [app-user-model-id]: https://learn.microsoft.com/en-us/windows/win32/shell/appids
 [electron-forge]: https://www.electronforge.io/
-[electron-packager]: https://github.com/electron/electron-packager
+[electron-packager]: https://github.com/electron/packager
 [CFBundleURLTypes]: https://developer.apple.com/library/ios/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html#//apple_ref/doc/uid/TP40009249-102207-TPXREF115
 [LSCopyDefaultHandlerForURLScheme]: https://developer.apple.com/documentation/coreservices/1441725-lscopydefaulthandlerforurlscheme?language=objc
 [handoff]: https://developer.apple.com/library/ios/documentation/UserExperience/Conceptual/Handoff/HandoffFundamentals/HandoffFundamentals.html
@@ -1570,19 +1563,6 @@ This is the user agent that will be used when no user agent is set at the
 `webContents` or `session` level.  It is useful for ensuring that your entire
 app has the same user agent.  Set to a custom value as early as possible
 in your app's initialization to ensure that your overridden value is used.
-
-### `app.runningUnderRosettaTranslation` _macOS_ _Readonly_ _Deprecated_
-
-A `boolean` which when `true` indicates that the app is currently running
-under the [Rosetta Translator Environment](https://en.wikipedia.org/wiki/Rosetta_(software)).
-
-You can use this property to prompt users to download the arm64 version of
-your application when they are running the x64 version under Rosetta
-incorrectly.
-
-**Deprecated:** This property is superceded by the `runningUnderARM64Translation`
-property which detects when the app is being translated to ARM64 in both macOS
-and Windows.
 
 ### `app.runningUnderARM64Translation` _Readonly_ _macOS_ _Windows_
 

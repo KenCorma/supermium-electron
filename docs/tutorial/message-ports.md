@@ -303,7 +303,7 @@ without having to step through the isolated world.
 
 ```js title='main.js (Main Process)'
 const { BrowserWindow, app, MessageChannelMain } = require('electron')
-const path = require('path')
+const path = require('node:path')
 
 app.whenReady().then(async () => {
   // Create a BrowserWindow with contextIsolation enabled.
@@ -365,7 +365,7 @@ window.onmessage = (event) => {
     // process.
     port.onmessage = (event) => {
       console.log('from main process:', event.data)
-      port.postMessage(event.data * 2)
+      port.postMessage(event.data.test * 2)
     }
   }
 }

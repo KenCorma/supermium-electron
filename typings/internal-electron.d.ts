@@ -19,22 +19,36 @@ declare namespace Electron {
     setAppPath(path: string | null): void;
   }
 
+  interface AutoUpdater {
+    isVersionAllowedForUpdate?(currentVersion: string, targetVersion: string): boolean;
+  }
+
   type TouchBarItemType = NonNullable<Electron.TouchBarConstructorOptions['items']>[0];
 
   interface BaseWindow {
-    _init(): void;
-  }
-
-  interface BrowserWindow {
     _init(): void;
     _touchBar: Electron.TouchBar | null;
     _setTouchBarItems: (items: TouchBarItemType[]) => void;
     _setEscapeTouchBarItem: (item: TouchBarItemType | {}) => void;
     _refreshTouchBarItem: (itemID: string) => void;
-    _getWindowButtonVisibility: () => boolean;
-    frameName: string;
     on(event: '-touch-bar-interaction', listener: (event: Event, itemID: string, details: any) => void): this;
     removeListener(event: '-touch-bar-interaction', listener: (event: Event, itemID: string, details: any) => void): this;
+  }
+
+  interface BrowserWindow extends BaseWindow {
+    _init(): void;
+    _getWindowButtonVisibility: () => boolean;
+    _getAlwaysOnTopLevel: () => string;
+    devToolsWebContents: WebContents;
+    frameName: string;
+    _browserViews: BrowserView[];
+    on(event: '-touch-bar-interaction', listener: (event: Event, itemID: string, details: any) => void): this;
+    removeListener(event: '-touch-bar-interaction', listener: (event: Event, itemID: string, details: any) => void): this;
+  }
+
+  interface BrowserView {
+    ownerWindow: BrowserWindow | null
+    webContentsView: WebContentsView
   }
 
   interface BrowserWindowConstructorOptions {
@@ -52,7 +66,7 @@ declare namespace Electron {
   }
 
   interface TouchBar {
-    _removeFromWindow: (win: BrowserWindow) => void;
+    _removeFromWindow: (win: BaseWindow) => void;
   }
 
   interface WebContents {
@@ -70,18 +84,19 @@ declare namespace Electron {
     _sendInternal(channel: string, ...args: any[]): void;
     _printToPDF(options: any): Promise<Buffer>;
     _print(options: any, callback?: (success: boolean, failureReason: string) => void): void;
-    _getPrinters(): Electron.PrinterInfo[];
     _getPrintersAsync(): Promise<Electron.PrinterInfo[]>;
     _init(): void;
+    _getNavigationEntryAtIndex(index: number): Electron.EntryAtIndex | null;
+    _getActiveIndex(): number;
+    _historyLength(): number;
     canGoToIndex(index: number): boolean;
-    getActiveIndex(): number;
-    length(): number;
     destroy(): void;
     // <webview>
     attachToIframe(embedderWebContents: Electron.WebContents, embedderFrameId: number): void;
     detachFromOuterFrame(): void;
     setEmbedder(embedder: Electron.WebContents): void;
     viewInstanceId: number;
+    _setOwnerWindow(w: BaseWindow | null): void;
   }
 
   interface WebFrameMain {
@@ -150,22 +165,6 @@ declare namespace Electron {
     _replyChannel: ReplyChannel;
   }
 
-  class View {}
-
-  // Experimental views API
-  class BaseWindow {
-    constructor(args: {show: boolean})
-    setContentView(view: View): void
-    static fromId(id: number): BaseWindow;
-    static getAllWindows(): BaseWindow[];
-    isFocused(): boolean;
-    static getFocusedWindow(): BaseWindow | undefined;
-    setMenu(menu: Menu): void;
-  }
-  class WebContentsView {
-    constructor(options: BrowserWindowConstructorOptions)
-  }
-
   // Deprecated / undocumented BrowserWindow methods
   interface BrowserWindow {
     getURL(): string;
@@ -185,12 +184,6 @@ declare namespace Electron {
   interface Protocol {
     registerProtocol(scheme: string, handler: any): boolean;
     interceptProtocol(scheme: string, handler: any): boolean;
-  }
-
-  namespace Main {
-    class BaseWindow extends Electron.BaseWindow {}
-    class View extends Electron.View {}
-    class WebContentsView extends Electron.WebContentsView {}
   }
 }
 

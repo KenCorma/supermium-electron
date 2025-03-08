@@ -7,7 +7,14 @@
 
 #include <memory>
 
+#include "base/containers/flat_set.h"
 #include "v8/include/v8.h"
+
+namespace node {
+
+class Environment;
+
+}  // namespace node
 
 namespace electron {
 
@@ -35,6 +42,7 @@ class WebWorkerObserver {
  private:
   std::unique_ptr<NodeBindings> node_bindings_;
   std::unique_ptr<ElectronBindings> electron_bindings_;
+  base::flat_set<std::shared_ptr<node::Environment>> environments_;
 };
 
 }  // namespace electron

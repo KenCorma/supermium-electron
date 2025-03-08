@@ -48,7 +48,7 @@ class ElectronExtensionsBrowserClient
   bool IsShuttingDown() override;
   bool AreExtensionsDisabled(const base::CommandLine& command_line,
                              content::BrowserContext* context) override;
-  bool IsValidContext(content::BrowserContext* context) override;
+  bool IsValidContext(void* context) override;
   bool IsSameContext(content::BrowserContext* first,
                      content::BrowserContext* second) override;
   bool HasOffTheRecordContext(content::BrowserContext* context) override;
@@ -102,6 +102,10 @@ class ElectronExtensionsBrowserClient
       const override;
   extensions::ProcessManagerDelegate* GetProcessManagerDelegate()
       const override;
+  mojo::PendingRemote<network::mojom::URLLoaderFactory>
+  GetControlledFrameEmbedderURLLoader(
+      int frame_tree_node_id,
+      content::BrowserContext* browser_context) override;
   std::unique_ptr<extensions::ExtensionHostDelegate>
   CreateExtensionHostDelegate() override;
   bool DidVersionUpdate(content::BrowserContext* context) override;

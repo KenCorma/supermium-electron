@@ -3,7 +3,7 @@
 const { ElectronVersions, Installer } = require('@electron/fiddle-core');
 const childProcess = require('node:child_process');
 const crypto = require('node:crypto');
-const fs = require('fs-extra');
+const fs = require('node:fs');
 const { hashElement } = require('folder-hash');
 const os = require('node:os');
 const path = require('node:path');
@@ -15,7 +15,6 @@ const fail = '✗'.red;
 
 const args = require('minimist')(process.argv, {
   string: ['runners', 'target', 'electronVersion'],
-  boolean: ['buildNativeTests'],
   unknown: arg => unknownFlags.push(arg)
 });
 
@@ -35,8 +34,7 @@ const BASE = path.resolve(__dirname, '../..');
 const NPX_CMD = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
 const runners = new Map([
-  ['main', { description: 'Main process specs', run: runMainProcessElectronTests }],
-  ['native', { description: 'Native specs', run: runNativeElectronTests }]
+  ['main', { description: 'Main process specs', run: runMainProcessElectronTests }]
 ]);
 
 const specHashPath = path.resolve(__dirname, '../spec/.hash');
@@ -183,57 +181,6 @@ async function runTestUsingElectron (specDir, testName) {
   console.log(`${pass} Electron ${testName} process tests passed.`);
 }
 
-async function runNativeElectronTests () {
-  let testTargets = require('./native-test-targets.json');
-  const outDir = `out/${utils.getOutDir()}`;
-
-  // If native tests are being run, only one arg would be relevant
-  if (args.target && !testTargets.includes(args.target)) {
-    console.log(`${fail} ${args.target} must be a subset of [${[testTargets].join(', ')}]`);
-    process.exit(1);
-  }
-
-  // Optionally build all native test targets
-  if (args.buildNativeTests) {
-    for (const target of testTargets) {
-      const build = childProcess.spawnSync('ninja', ['-C', outDir, target], {
-        cwd: path.resolve(__dirname, '../..'),
-        stdio: 'inherit'
-      });
-
-      // Exit if test target failed to build
-      if (build.status !== 0) {
-        console.log(`${fail} ${target} failed to build.`);
-        process.exit(1);
-      }
-    }
-  }
-
-  // If a specific target was passed, only build and run that target
-  if (args.target) testTargets = [args.target];
-
-  // Run test targets
-  const failures = [];
-  for (const target of testTargets) {
-    console.info('\nRunning native test for target:', target);
-    const testRun = childProcess.spawnSync(`./${outDir}/${target}`, {
-      cwd: path.resolve(__dirname, '../..'),
-      stdio: 'inherit'
-    });
-
-    // Collect failures and log at end
-    if (testRun.status !== 0) failures.push({ target });
-  }
-
-  // Exit if any failures
-  if (failures.length > 0) {
-    console.log(`${fail} Electron native tests failed for the following targets: `, failures);
-    process.exit(1);
-  }
-
-  console.log(`${pass} Electron native tests passed.`);
-}
-
 async function runMainProcessElectronTests () {
   await runTestUsingElectron('spec', 'main');
 }
@@ -269,12 +216,13 @@ async function installSpecModules (dir) {
     env.npm_config_nodedir = path.resolve(BASE, `out/${utils.getOutDir({ shouldLog: true })}/gen/node_headers`);
   }
   if (fs.existsSync(path.resolve(dir, 'node_modules'))) {
-    await fs.remove(path.resolve(dir, 'node_modules'));
+    await fs.promises.rm(path.resolve(dir, 'node_modules'), { force: true, recursive: true });
   }
-  const { status } = childProcess.spawnSync(NPX_CMD, [`yarn@${YARN_VERSION}`, 'install', '--frozen-lockfile'], {
+  const { status } = childProcess.spawnSync(NPX_CMD, [`yarn@${YARN_VERSION}`, 'install', '--frozen-lockfile', '--ignore-engines'], {
     env,
     cwd: dir,
-    stdio: 'inherit'
+    stdio: 'inherit',
+    shell: process.platform === 'win32'
   });
   if (status !== 0 && !process.env.IGNORE_YARN_INSTALL_ERROR) {
     console.log(`${fail} Failed to yarn install in '${dir}'`);

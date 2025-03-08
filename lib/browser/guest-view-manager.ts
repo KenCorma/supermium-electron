@@ -14,7 +14,7 @@ interface GuestInstance {
 }
 
 const webViewManager = process._linkedBinding('electron_browser_web_view_manager');
-const netBinding = process._linkedBinding('electron_browser_net');
+const netBinding = process._linkedBinding('electron_common_net');
 
 const supportedWebViewEvents = Object.keys(webViewEvents);
 
@@ -140,9 +140,9 @@ const createGuest = function (embedder: Electron.WebContents, embedderFrameId: n
 
   const makeProps = (eventKey: string, args: any[]) => {
     const props: Record<string, any> = {};
-    webViewEvents[eventKey].forEach((prop, index) => {
+    for (const [index, prop] of webViewEvents[eventKey].entries()) {
       props[prop] = args[index];
-    });
+    }
     return props;
   };
 

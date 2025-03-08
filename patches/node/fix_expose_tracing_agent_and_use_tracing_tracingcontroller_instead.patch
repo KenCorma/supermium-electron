@@ -7,10 +7,10 @@ Subject: fix: expose tracing::Agent and use tracing::TracingController instead
 This API is used by Electron to create Node's tracing controller.
 
 diff --git a/src/api/environment.cc b/src/api/environment.cc
-index e1095037f3b9970e3ffd314b641b454f1248e33e..7ef6d04794c31064c70dbbb0bfc1dd7bf4d1b8fc 100644
+index cdc2f7aaa8efd8b5d9090455c92d81b2bef460b7..12414204361e7227f7f7736a07388ade3f093e00 100644
 --- a/src/api/environment.cc
 +++ b/src/api/environment.cc
-@@ -520,6 +520,10 @@ MultiIsolatePlatform* GetMultiIsolatePlatform(IsolateData* env) {
+@@ -591,6 +591,10 @@ MultiIsolatePlatform* GetMultiIsolatePlatform(IsolateData* env) {
    return env->platform();
  }
  
@@ -22,10 +22,10 @@ index e1095037f3b9970e3ffd314b641b454f1248e33e..7ef6d04794c31064c70dbbb0bfc1dd7b
      int thread_pool_size,
      node::tracing::TracingController* tracing_controller) {
 diff --git a/src/node.h b/src/node.h
-index ac9bce58f33380cd8b687a088176a446c1e8cf34..b50bd5a941d381778d464fdb2770566a3ac34fed 100644
+index 7047a667f7f1b2a09aa409b2933aad4b3a4af929..c267ed1eeaa2d8b6ecd5a1563a4e9440bf0cca00 100644
 --- a/src/node.h
 +++ b/src/node.h
-@@ -130,6 +130,7 @@ namespace node {
+@@ -133,6 +133,7 @@ struct SnapshotData;
  
  namespace tracing {
  
@@ -33,7 +33,7 @@ index ac9bce58f33380cd8b687a088176a446c1e8cf34..b50bd5a941d381778d464fdb2770566a
  class TracingController;
  
  }
-@@ -688,6 +689,8 @@ NODE_EXTERN void GetNodeReport(Environment* env,
+@@ -828,6 +829,8 @@ NODE_EXTERN void GetNodeReport(Environment* env,
  NODE_EXTERN MultiIsolatePlatform* GetMultiIsolatePlatform(Environment* env);
  NODE_EXTERN MultiIsolatePlatform* GetMultiIsolatePlatform(IsolateData* env);
  

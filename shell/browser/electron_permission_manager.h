@@ -61,37 +61,19 @@ class ElectronPermissionManager : public content::PermissionControllerDelegate {
   using BluetoothPairingHandler =
       base::RepeatingCallback<void(gin_helper::Dictionary, PairCallback)>;
 
+  void RequestPermissionWithDetails(blink::PermissionType permission,
+                                    content::RenderFrameHost* render_frame_host,
+                                    const GURL& requesting_origin,
+                                    bool user_gesture,
+                                    base::Value::Dict details,
+                                    StatusCallback response_callback);
+
   // Handler to dispatch permission requests in JS.
   void SetPermissionRequestHandler(const RequestHandler& handler);
   void SetPermissionCheckHandler(const CheckHandler& handler);
   void SetDevicePermissionHandler(const DeviceCheckHandler& handler);
   void SetProtectedUSBHandler(const ProtectedUSBHandler& handler);
   void SetBluetoothPairingHandler(const BluetoothPairingHandler& handler);
-
-  // content::PermissionControllerDelegate:
-  void RequestPermission(blink::PermissionType permission,
-                         content::RenderFrameHost* render_frame_host,
-                         const GURL& requesting_origin,
-                         bool user_gesture,
-                         StatusCallback callback) override;
-  void RequestPermissionWithDetails(blink::PermissionType permission,
-                                    content::RenderFrameHost* render_frame_host,
-                                    const GURL& requesting_origin,
-                                    bool user_gesture,
-                                    base::Value::Dict details,
-                                    StatusCallback callback);
-  void RequestPermissions(const std::vector<blink::PermissionType>& permissions,
-                          content::RenderFrameHost* render_frame_host,
-                          const GURL& requesting_origin,
-                          bool user_gesture,
-                          StatusesCallback callback) override;
-
-  void RequestPermissionsWithDetails(
-      const std::vector<blink::PermissionType>& permissions,
-      content::RenderFrameHost* render_frame_host,
-      bool user_gesture,
-      base::Value::Dict details,
-      StatusesCallback callback);
 
   void CheckBluetoothDevicePair(gin_helper::Dictionary details,
                                 PairCallback pair_callback) const;
@@ -125,6 +107,10 @@ class ElectronPermissionManager : public content::PermissionControllerDelegate {
                             blink::mojom::PermissionStatus status);
 
   // content::PermissionControllerDelegate:
+  void RequestPermissions(
+      content::RenderFrameHost* render_frame_host,
+      const content::PermissionRequestDescription& request_description,
+      StatusesCallback callback) override;
   void ResetPermission(blink::PermissionType permission,
                        const GURL& requesting_origin,
                        const GURL& embedding_origin) override;
@@ -133,9 +119,8 @@ class ElectronPermissionManager : public content::PermissionControllerDelegate {
       const GURL& requesting_origin,
       const GURL& embedding_origin) override;
   void RequestPermissionsFromCurrentDocument(
-      const std::vector<blink::PermissionType>& permissions,
       content::RenderFrameHost* render_frame_host,
-      bool user_gesture,
+      const content::PermissionRequestDescription& request_description,
       base::OnceCallback<
           void(const std::vector<blink::mojom::PermissionStatus>&)> callback)
       override;
@@ -154,18 +139,24 @@ class ElectronPermissionManager : public content::PermissionControllerDelegate {
       blink::PermissionType permission,
       content::RenderFrameHost* render_frame_host,
       const url::Origin& requesting_origin) override;
-  SubscriptionId SubscribePermissionStatusChange(
+  SubscriptionId SubscribeToPermissionStatusChange(
       blink::PermissionType permission,
       content::RenderProcessHost* render_process_host,
       content::RenderFrameHost* render_frame_host,
       const GURL& requesting_origin,
       base::RepeatingCallback<void(blink::mojom::PermissionStatus)> callback)
       override;
-  void UnsubscribePermissionStatusChange(SubscriptionId id) override;
+  void UnsubscribeFromPermissionStatusChange(SubscriptionId id) override;
 
  private:
   class PendingRequest;
   using PendingRequestsMap = base::IDMap<std::unique_ptr<PendingRequest>>;
+
+  void RequestPermissionsWithDetails(
+      content::RenderFrameHost* render_frame_host,
+      const content::PermissionRequestDescription& request_description,
+      base::Value::Dict details,
+      StatusesCallback callback);
 
   RequestHandler request_handler_;
   CheckHandler check_handler_;

@@ -6,6 +6,7 @@
 #define ELECTRON_SHELL_BROWSER_BROWSER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@
 #include "gin/dictionary.h"
 #include "shell/browser/browser_observer.h"
 #include "shell/browser/window_list_observer.h"
+#include "shell/common/gin_converters/login_item_settings_converter.h"
 #include "shell/common/gin_helper/promise.h"
 
 #if BUILDFLAG(IS_WIN)
@@ -39,6 +41,48 @@ class Arguments;
 namespace electron {
 
 class ElectronMenuModel;
+
+#if BUILDFLAG(IS_WIN)
+struct LaunchItem {
+  std::wstring name;
+  std::wstring path;
+  std::wstring scope;
+  std::vector<std::wstring> args;
+  bool enabled = true;
+
+  LaunchItem();
+  ~LaunchItem();
+  LaunchItem(const LaunchItem&);
+};
+#endif
+
+struct LoginItemSettings {
+  bool open_at_login = false;
+  bool open_as_hidden = false;
+  bool restore_state = false;
+  bool opened_at_login = false;
+  bool opened_as_hidden = false;
+  std::u16string path;
+  std::vector<std::u16string> args;
+
+#if BUILDFLAG(IS_MAC)
+  std::string type = "mainAppService";
+  std::string service_name;
+  std::string status;
+#elif BUILDFLAG(IS_WIN)
+  // used in browser::setLoginItemSettings
+  bool enabled = true;
+  std::wstring name;
+
+  // used in browser::getLoginItemSettings
+  bool executable_will_launch_at_login = false;
+  std::vector<LaunchItem> launch_items;
+#endif
+
+  LoginItemSettings();
+  ~LoginItemSettings();
+  LoginItemSettings(const LoginItemSettings&);
+};
 
 // This class is used for control application-wide operations.
 class Browser : public WindowListObserver {
@@ -108,49 +152,11 @@ class Browser : public WindowListObserver {
 #endif
 
   // Set/Get the badge count.
-  bool SetBadgeCount(absl::optional<int> count);
-  int GetBadgeCount();
+  bool SetBadgeCount(std::optional<int> count);
+  [[nodiscard]] int badge_count() const { return badge_count_; }
 
-#if BUILDFLAG(IS_WIN)
-  struct LaunchItem {
-    std::wstring name;
-    std::wstring path;
-    std::wstring scope;
-    std::vector<std::wstring> args;
-    bool enabled = true;
-
-    LaunchItem();
-    ~LaunchItem();
-    LaunchItem(const LaunchItem&);
-  };
-#endif
-
-  // Set/Get the login item settings of the app
-  struct LoginItemSettings {
-    bool open_at_login = false;
-    bool open_as_hidden = false;
-    bool restore_state = false;
-    bool opened_at_login = false;
-    bool opened_as_hidden = false;
-    std::u16string path;
-    std::vector<std::u16string> args;
-
-#if BUILDFLAG(IS_WIN)
-    // used in browser::setLoginItemSettings
-    bool enabled = true;
-    std::wstring name;
-
-    // used in browser::getLoginItemSettings
-    bool executable_will_launch_at_login = false;
-    std::vector<LaunchItem> launch_items;
-#endif
-
-    LoginItemSettings();
-    ~LoginItemSettings();
-    LoginItemSettings(const LoginItemSettings&);
-  };
   void SetLoginItemSettings(LoginItemSettings settings);
-  LoginItemSettings GetLoginItemSettings(const LoginItemSettings& options);
+  v8::Local<v8::Value> GetLoginItemSettings(const LoginItemSettings& options);
 
 #if BUILDFLAG(IS_MAC)
   // Set the handler which decides whether to shutdown.
@@ -205,9 +211,9 @@ class Browser : public WindowListObserver {
   void ApplyForcedRTL();
 
   // Bounce the dock icon.
-  enum class BounceType {
-    kCritical = 0,        // NSCriticalRequest
-    kInformational = 10,  // NSInformationalRequest
+  enum class BounceType{
+      kCritical = 0,        // NSCriticalRequest
+      kInformational = 10,  // NSInformationalRequest
   };
   int DockBounce(BounceType type);
   void DockCancelBounce(int request_id);
@@ -229,6 +235,10 @@ class Browser : public WindowListObserver {
 
   // Set docks' icon.
   void DockSetIcon(v8::Isolate* isolate, v8::Local<v8::Value> icon);
+
+  void SetLaunchedAtLogin(bool launched_at_login) {
+    was_launched_at_login_ = launched_at_login;
+  }
 
 #endif  // BUILDFLAG(IS_MAC)
 
@@ -364,13 +374,14 @@ class Browser : public WindowListObserver {
 #if BUILDFLAG(IS_MAC)
   std::unique_ptr<ui::ScopedPasswordInputEnabler> password_input_enabler_;
   base::Time last_dock_show_;
+  bool was_launched_at_login_;
 #endif
 
   base::Value::Dict about_panel_options_;
 
 #if BUILDFLAG(IS_WIN)
   void UpdateBadgeContents(HWND hwnd,
-                           const absl::optional<std::string>& badge_content,
+                           const std::optional<std::string>& badge_content,
                            const std::string& badge_alt_string);
 
   // In charge of running taskbar related APIs.

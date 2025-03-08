@@ -41,6 +41,17 @@ describe('webContents module', () => {
     });
   });
 
+  describe('webContents properties', () => {
+    afterEach(closeAllWindows);
+
+    it('has expected additional enumerable properties', () => {
+      const w = new BrowserWindow({ show: false });
+      const properties = Object.getOwnPropertyNames(w.webContents);
+      expect(properties).to.include('ipc');
+      expect(properties).to.include('navigationHistory');
+    });
+  });
+
   describe('fromId()', () => {
     it('returns undefined for an unknown id', () => {
       expect(webContents.fromId(12345)).to.be.undefined();
@@ -187,10 +198,31 @@ describe('webContents module', () => {
 
     afterEach(closeAllWindows);
 
+    it('does not throw when options are not passed', () => {
+      expect(() => {
+        w.webContents.print();
+      }).not.to.throw();
+
+      expect(() => {
+        w.webContents.print(undefined);
+      }).not.to.throw();
+    });
+
+    it('does not throw when options object is empty', () => {
+      expect(() => {
+        w.webContents.print({});
+      }).not.to.throw();
+    });
+
     it('throws when invalid settings are passed', () => {
       expect(() => {
         // @ts-ignore this line is intentionally incorrect
         w.webContents.print(true);
+      }).to.throw('webContents.print(): Invalid print settings specified.');
+
+      expect(() => {
+        // @ts-ignore this line is intentionally incorrect
+        w.webContents.print(null);
       }).to.throw('webContents.print(): Invalid print settings specified.');
     });
 
@@ -375,6 +407,16 @@ describe('webContents module', () => {
       await expect(w.loadURL(w.getURL() + '#foo')).to.eventually.be.fulfilled();
     });
 
+    it('resolves after browser initiated navigation', async () => {
+      let finishedLoading = false;
+      w.webContents.on('did-finish-load', function () {
+        finishedLoading = true;
+      });
+
+      await w.loadFile(path.join(fixturesPath, 'pages', 'navigate_in_page_and_wait.html'));
+      expect(finishedLoading).to.be.true();
+    });
+
     it('rejects when failing to load a file URL', async () => {
       await expect(w.loadURL('file:non-existent')).to.eventually.be.rejected()
         .and.have.property('code', 'ERR_FILE_NOT_FOUND');
@@ -419,6 +461,19 @@ describe('webContents module', () => {
       } catch (e) {
         expect((e as Error).message).to.match(/Debugger is already attached to the target/);
       }
+    });
+
+    it('fails if loadURL is called inside a non-reentrant critical section', (done) => {
+      w.webContents.once('did-fail-load', (_event, _errorCode, _errorDescription, validatedURL) => {
+        expect(validatedURL).to.contain('blank.html');
+        done();
+      });
+
+      w.webContents.once('did-start-loading', () => {
+        w.loadURL(`file://${fixturesPath}/pages/blank.html`);
+      });
+
+      w.loadURL('data:text/html,<h1>HELLO</h1>');
     });
 
     it('sets appropriate error information on rejection', async () => {
@@ -490,6 +545,88 @@ describe('webContents module', () => {
       await expect(main).to.eventually.be.rejected()
         .and.have.property('errno', -355); // ERR_INCOMPLETE_CHUNKED_ENCODING
       s.close();
+    });
+
+    it('subsequent load failures reject each time', async () => {
+      await expect(w.loadURL('file:non-existent')).to.eventually.be.rejected();
+      await expect(w.loadURL('file:non-existent')).to.eventually.be.rejected();
+    });
+
+    it('invalid URL load rejects', async () => {
+      await expect(w.loadURL('invalidURL')).to.eventually.be.rejected();
+    });
+  });
+
+  describe('navigationHistory', () => {
+    let w: BrowserWindow;
+    const urlPage1 = 'data:text/html,<html><head><script>document.title = "Page 1";</script></head><body></body></html>';
+    const urlPage2 = 'data:text/html,<html><head><script>document.title = "Page 2";</script></head><body></body></html>';
+    const urlPage3 = 'data:text/html,<html><head><script>document.title = "Page 3";</script></head><body></body></html>';
+
+    beforeEach(async () => {
+      w = new BrowserWindow({ show: false });
+    });
+    afterEach(closeAllWindows);
+    describe('navigationHistory.getEntryAtIndex(index) API ', () => {
+      it('should fetch default navigation entry when no urls are loaded', async () => {
+        const result = w.webContents.navigationHistory.getEntryAtIndex(0);
+        expect(result).to.deep.equal({ url: '', title: '' });
+      });
+      it('should fetch navigation entry given a valid index', async () => {
+        await w.loadURL(urlPage1);
+        const result = w.webContents.navigationHistory.getEntryAtIndex(0);
+        expect(result).to.deep.equal({ url: urlPage1, title: 'Page 1' });
+      });
+      it('should return null given an invalid index larger than history length', async () => {
+        await w.loadURL(urlPage1);
+        const result = w.webContents.navigationHistory.getEntryAtIndex(5);
+        expect(result).to.be.null();
+      });
+      it('should return null given an invalid negative index', async () => {
+        await w.loadURL(urlPage1);
+        const result = w.webContents.navigationHistory.getEntryAtIndex(-1);
+        expect(result).to.be.null();
+      });
+    });
+
+    describe('navigationHistory.getActiveIndex() API', () => {
+      it('should return valid active index after a single page visit', async () => {
+        await w.loadURL(urlPage1);
+        expect(w.webContents.navigationHistory.getActiveIndex()).to.equal(0);
+      });
+
+      it('should return valid active index after a multiple page visits', async () => {
+        await w.loadURL(urlPage1);
+        await w.loadURL(urlPage2);
+        await w.loadURL(urlPage3);
+
+        expect(w.webContents.navigationHistory.getActiveIndex()).to.equal(2);
+      });
+
+      it('should return valid active index given no page visits', async () => {
+        expect(w.webContents.navigationHistory.getActiveIndex()).to.equal(0);
+      });
+    });
+
+    describe('navigationHistory.length() API', () => {
+      it('should return valid history length after a single page visit', async () => {
+        await w.loadURL(urlPage1);
+        expect(w.webContents.navigationHistory.length()).to.equal(1);
+      });
+
+      it('should return valid history length after a multiple page visits', async () => {
+        await w.loadURL(urlPage1);
+        await w.loadURL(urlPage2);
+        await w.loadURL(urlPage3);
+
+        expect(w.webContents.navigationHistory.length()).to.equal(3);
+      });
+
+      it('should return valid history length given no page visits', async () => {
+        // Note: Even if no navigation has committed, the history list will always start with an initial navigation entry
+        // Ref: https://source.chromium.org/chromium/chromium/src/+/main:ceontent/public/browser/navigation_controller.h;l=381
+        expect(w.webContents.navigationHistory.length()).to.equal(1);
+      });
     });
   });
 
@@ -615,6 +752,24 @@ describe('webContents module', () => {
       w.webContents.openDevTools({ mode: 'detach', activate: false, title: 'myTitle' });
       await devtoolsOpened;
       expect(w.webContents.getDevToolsTitle()).to.equal('myTitle');
+    });
+
+    it('can re-open devtools', async () => {
+      const w = new BrowserWindow({ show: false });
+      const devtoolsOpened = once(w.webContents, 'devtools-opened');
+      w.webContents.openDevTools({ mode: 'detach', activate: true });
+      await devtoolsOpened;
+      expect(w.webContents.isDevToolsOpened()).to.be.true();
+
+      const devtoolsClosed = once(w.webContents, 'devtools-closed');
+      w.webContents.closeDevTools();
+      await devtoolsClosed;
+      expect(w.webContents.isDevToolsOpened()).to.be.false();
+
+      const devtoolsOpened2 = once(w.webContents, 'devtools-opened');
+      w.webContents.openDevTools({ mode: 'detach', activate: true });
+      await devtoolsOpened2;
+      expect(w.webContents.isDevToolsOpened()).to.be.true();
     });
   });
 
@@ -827,6 +982,20 @@ describe('webContents module', () => {
       expect(shiftKey).to.be.false();
       expect(ctrlKey).to.be.false();
       expect(altKey).to.be.false();
+    });
+
+    it('can correctly convert accelerators to key codes', async () => {
+      const keyup = once(ipcMain, 'keyup');
+      w.webContents.sendInputEvent({ keyCode: 'Plus', type: 'char' });
+      w.webContents.sendInputEvent({ keyCode: 'Space', type: 'char' });
+      w.webContents.sendInputEvent({ keyCode: 'Plus', type: 'char' });
+      w.webContents.sendInputEvent({ keyCode: 'Space', type: 'char' });
+      w.webContents.sendInputEvent({ keyCode: 'Plus', type: 'char' });
+      w.webContents.sendInputEvent({ keyCode: 'Plus', type: 'keyUp' });
+
+      await keyup;
+      const inputText = await w.webContents.executeJavaScript('document.getElementById("input").value');
+      expect(inputText).to.equal('+ + +');
     });
 
     it('can send char events with modifiers', async () => {
@@ -1208,8 +1377,7 @@ describe('webContents module', () => {
           res.end();
         });
       });
-      server.listen(0, '127.0.0.1', () => {
-        const url = 'http://127.0.0.1:' + (server.address() as AddressInfo).port;
+      listen(server).then(({ url }) => {
         const content = `<iframe src=${url}></iframe>`;
         w.webContents.on('did-frame-finish-load', (e, isMainFrame) => {
           if (!isMainFrame) {
@@ -1302,10 +1470,51 @@ describe('webContents module', () => {
         'default_public_and_private_interfaces',
         'disable_non_proxied_udp'
       ] as const;
-      policies.forEach((policy) => {
+      for (const policy of policies) {
         w.webContents.setWebRTCIPHandlingPolicy(policy);
         expect(w.webContents.getWebRTCIPHandlingPolicy()).to.equal(policy);
-      });
+      }
+    });
+  });
+
+  describe('webrtc udp port range policy api', () => {
+    let w: BrowserWindow;
+    beforeEach(() => {
+      w = new BrowserWindow({ show: false });
+    });
+
+    afterEach(closeAllWindows);
+
+    it('check default webrtc udp port range is { min: 0, max: 0 }', () => {
+      const settings = w.webContents.getWebRTCUDPPortRange();
+      expect(settings).to.deep.equal({ min: 0, max: 0 });
+    });
+
+    it('can set and get webrtc udp port range policy with correct arguments', () => {
+      w.webContents.setWebRTCUDPPortRange({ min: 1, max: 65535 });
+      const settings = w.webContents.getWebRTCUDPPortRange();
+      expect(settings).to.deep.equal({ min: 1, max: 65535 });
+    });
+
+    it('can not set webrtc udp port range policy with invalid arguments', () => {
+      expect(() => {
+        w.webContents.setWebRTCUDPPortRange({ min: 0, max: 65535 });
+      }).to.throw("'min' and 'max' must be in the (0, 65535] range or [0, 0]");
+      expect(() => {
+        w.webContents.setWebRTCUDPPortRange({ min: 1, max: 65536 });
+      }).to.throw("'min' and 'max' must be in the (0, 65535] range or [0, 0]");
+      expect(() => {
+        w.webContents.setWebRTCUDPPortRange({ min: 60000, max: 56789 });
+      }).to.throw("'max' must be greater than or equal to 'min'");
+    });
+
+    it('can reset webrtc udp port range policy to default with { min: 0, max: 0 }', () => {
+      w.webContents.setWebRTCUDPPortRange({ min: 1, max: 65535 });
+      const settings = w.webContents.getWebRTCUDPPortRange();
+      expect(settings).to.deep.equal({ min: 1, max: 65535 });
+      w.webContents.setWebRTCUDPPortRange({ min: 0, max: 0 });
+      const defaultSetting = w.webContents.getWebRTCUDPPortRange();
+      expect(defaultSetting).to.deep.equal({ min: 0, max: 0 });
     });
   });
 
@@ -1538,10 +1747,11 @@ describe('webContents module', () => {
             response.end();
             break;
           default:
-            done('unsupported endpoint');
+            done(new Error('unsupported endpoint'));
         }
-      }).listen(0, '127.0.0.1', () => {
-        serverUrl = 'http://127.0.0.1:' + (server.address() as AddressInfo).port;
+      });
+      listen(server).then(({ url }) => {
+        serverUrl = url;
         done();
       });
     });
@@ -1670,11 +1880,10 @@ describe('webContents module', () => {
         }
         res.end('<a id="a" href="/should_have_referrer" target="_blank">link</a>');
       });
-      server.listen(0, '127.0.0.1', () => {
-        const url = 'http://127.0.0.1:' + (server.address() as AddressInfo).port + '/';
+      listen(server).then(({ url }) => {
         w.webContents.once('did-finish-load', () => {
           w.webContents.setWindowOpenHandler(details => {
-            expect(details.referrer.url).to.equal(url);
+            expect(details.referrer.url).to.equal(url + '/');
             expect(details.referrer.policy).to.equal('strict-origin-when-cross-origin');
             return { action: 'allow' };
           });
@@ -1697,11 +1906,10 @@ describe('webContents module', () => {
         }
         res.end('');
       });
-      server.listen(0, '127.0.0.1', () => {
-        const url = 'http://127.0.0.1:' + (server.address() as AddressInfo).port + '/';
+      listen(server).then(({ url }) => {
         w.webContents.once('did-finish-load', () => {
           w.webContents.setWindowOpenHandler(details => {
-            expect(details.referrer.url).to.equal(url);
+            expect(details.referrer.url).to.equal(url + '/');
             expect(details.referrer.policy).to.equal('strict-origin-when-cross-origin');
             return { action: 'allow' };
           });
@@ -1862,7 +2070,7 @@ describe('webContents module', () => {
     it('does not crash when called via BrowserWindow', () => {
       const w = new BrowserWindow({ show: false });
 
-      (w as any).setBackgroundThrottling(true);
+      w.setBackgroundThrottling(true);
     });
 
     it('does not crash when disallowing', () => {
@@ -1897,21 +2105,11 @@ describe('webContents module', () => {
     it('works via BrowserWindow', () => {
       const w = new BrowserWindow({ show: false });
 
-      (w as any).setBackgroundThrottling(false);
-      expect((w as any).getBackgroundThrottling()).to.equal(false);
+      w.setBackgroundThrottling(false);
+      expect(w.getBackgroundThrottling()).to.equal(false);
 
-      (w as any).setBackgroundThrottling(true);
-      expect((w as any).getBackgroundThrottling()).to.equal(true);
-    });
-  });
-
-  ifdescribe(features.isPrintingEnabled())('getPrinters()', () => {
-    afterEach(closeAllWindows);
-    it('can get printer list', async () => {
-      const w = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
-      await w.loadURL('about:blank');
-      const printers = w.webContents.getPrinters();
-      expect(printers).to.be.an('array');
+      w.setBackgroundThrottling(true);
+      expect(w.getBackgroundThrottling()).to.equal(true);
     });
   });
 
@@ -1950,7 +2148,9 @@ describe('webContents module', () => {
         pageRanges: { oops: 'im-not-the-right-key' },
         headerTemplate: [1, 2, 3],
         footerTemplate: [4, 5, 6],
-        preferCSSPageSize: 'no'
+        preferCSSPageSize: 'no',
+        generateTaggedPDF: 'wtf',
+        generateDocumentOutline: [7, 8, 9]
       };
 
       await w.loadURL('data:text/html,<h1>Hello, World!</h1>');
@@ -1960,6 +2160,20 @@ describe('webContents module', () => {
         const param = { [key]: value };
         await expect(w.webContents.printToPDF(param)).to.eventually.be.rejected();
       }
+    });
+
+    it('rejects when margins exceed physical page size', async () => {
+      await w.loadURL('data:text/html,<h1>Hello, World!</h1>');
+
+      await expect(w.webContents.printToPDF({
+        pageSize: 'Letter',
+        margins: {
+          top: 100,
+          bottom: 100,
+          left: 5,
+          right: 5
+        }
+      })).to.eventually.be.rejectedWith('margins must be less than or equal to pageSize');
     });
 
     it('does not crash when called multiple times in parallel', async () => {
@@ -2080,6 +2294,28 @@ describe('webContents module', () => {
 
       // Check that correct # of pages are rendered.
       expect(doc.numPages).to.equal(3);
+    });
+
+    it('does not tag PDFs by default', async () => {
+      await w.loadFile(path.join(__dirname, 'fixtures', 'api', 'print-to-pdf-small.html'));
+
+      const data = await w.webContents.printToPDF({});
+      const doc = await pdfjs.getDocument(data).promise;
+      const markInfo = await doc.getMarkInfo();
+      expect(markInfo).to.be.null();
+    });
+
+    it('can generate tag data for PDFs', async () => {
+      await w.loadFile(path.join(__dirname, 'fixtures', 'api', 'print-to-pdf-small.html'));
+
+      const data = await w.webContents.printToPDF({ generateTaggedPDF: true });
+      const doc = await pdfjs.getDocument(data).promise;
+      const markInfo = await doc.getMarkInfo();
+      expect(markInfo).to.deep.equal({
+        Marked: true,
+        UserProperties: false,
+        Suspects: false
+      });
     });
   });
 
@@ -2255,17 +2491,6 @@ describe('webContents module', () => {
     });
   });
 
-  describe('crashed event', () => {
-    it('does not crash main process when destroying WebContents in it', async () => {
-      const contents = (webContents as typeof ElectronInternal.WebContents).create({ nodeIntegration: true });
-      const crashEvent = once(contents, 'render-process-gone');
-      await contents.loadURL('about:blank');
-      contents.forcefullyCrashRenderer();
-      await crashEvent;
-      contents.destroy();
-    });
-  });
-
   describe('context-menu event', () => {
     afterEach(closeAllWindows);
     it('emits when right-clicked in page', async () => {
@@ -2370,18 +2595,18 @@ describe('webContents module', () => {
     it('emits when moveTo is called', async () => {
       const w = new BrowserWindow({ show: false });
       w.loadURL('about:blank');
-      w.webContents.executeJavaScript('window.moveTo(100, 100)', true);
+      w.webContents.executeJavaScript('window.moveTo(50, 50)', true);
       const [, rect] = await once(w.webContents, 'content-bounds-updated') as [any, Electron.Rectangle];
       const { width, height } = w.getBounds();
       expect(rect).to.deep.equal({
-        x: 100,
-        y: 100,
+        x: 50,
+        y: 50,
         width,
         height
       });
       await new Promise(setImmediate);
-      expect(w.getBounds().x).to.equal(100);
-      expect(w.getBounds().y).to.equal(100);
+      expect(w.getBounds().x).to.equal(50);
+      expect(w.getBounds().y).to.equal(50);
     });
 
     it('emits when resizeTo is called', async () => {

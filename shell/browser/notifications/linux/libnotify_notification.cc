@@ -4,10 +4,11 @@
 
 #include "shell/browser/notifications/linux/libnotify_notification.h"
 
-#include <set>
 #include <string>
 
+#include "base/containers/flat_set.h"
 #include "base/files/file_enumerator.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/strings/utf_string_conversions.h"
 #include "shell/browser/notifications/notification_delegate.h"
@@ -23,8 +24,8 @@ namespace {
 
 LibNotifyLoader libnotify_loader_;
 
-const std::set<std::string>& GetServerCapabilities() {
-  static std::set<std::string> caps;
+const base::flat_set<std::string>& GetServerCapabilities() {
+  static base::flat_set<std::string> caps;
   if (caps.empty()) {
     auto* capabilities = libnotify_loader_.notify_get_server_caps();
     for (auto* l = capabilities; l != nullptr; l = l->next)
@@ -35,7 +36,7 @@ const std::set<std::string>& GetServerCapabilities() {
 }
 
 bool HasCapability(const std::string& capability) {
-  return GetServerCapabilities().count(capability) != 0;
+  return GetServerCapabilities().contains(capability);
 }
 
 bool NotifierSupportsActions() {
@@ -87,15 +88,16 @@ void LibnotifyNotification::Show(const NotificationOptions& options) {
       base::UTF16ToUTF8(options.title).c_str(),
       base::UTF16ToUTF8(options.msg).c_str(), nullptr);
 
-  g_signal_connect(notification_, "closed",
-                   G_CALLBACK(OnNotificationClosedThunk), this);
+  signal_ = ScopedGSignal(
+      notification_, "closed",
+      base::BindRepeating(&LibnotifyNotification::OnNotificationClosed,
+                          base::Unretained(this)));
 
   // NB: On Unity and on any other DE using Notify-OSD, adding a notification
   // action will cause the notification to display as a modal dialog box.
   if (NotifierSupportsActions()) {
     libnotify_loader_.notify_notification_add_action(
-        notification_, "default", "View", OnNotificationViewThunk, this,
-        nullptr);
+        notification_, "default", "View", OnNotificationView, this, nullptr);
   }
 
   NotifyUrgency urgency = NOTIFY_URGENCY_NORMAL;
@@ -122,7 +124,7 @@ void LibnotifyNotification::Show(const NotificationOptions& options) {
 
   if (!options.tag.empty()) {
     GQuark id = g_quark_from_string(options.tag.c_str());
-    g_object_set(G_OBJECT(notification_), "id", id, NULL);
+    g_object_set(G_OBJECT(notification_), "id", id, nullptr);
   }
 
   // Always try to append notifications.
@@ -157,26 +159,29 @@ void LibnotifyNotification::Show(const NotificationOptions& options) {
 
 void LibnotifyNotification::Dismiss() {
   if (!notification_) {
-    Destroy();
     return;
   }
 
   GError* error = nullptr;
+  on_dismissing_ = true;
   libnotify_loader_.notify_notification_close(notification_, &error);
   if (error) {
     log_and_clear_error(error, "notify_notification_close");
-    Destroy();
   }
+  on_dismissing_ = false;
 }
 
 void LibnotifyNotification::OnNotificationClosed(
     NotifyNotification* notification) {
-  NotificationDismissed();
+  NotificationDismissed(!on_dismissing_);
 }
 
 void LibnotifyNotification::OnNotificationView(NotifyNotification* notification,
-                                               char* action) {
-  NotificationClicked();
+                                               char* action,
+                                               gpointer user_data) {
+  LibnotifyNotification* that = static_cast<LibnotifyNotification*>(user_data);
+  DCHECK(that);
+  that->NotificationClicked();
 }
 
 }  // namespace electron

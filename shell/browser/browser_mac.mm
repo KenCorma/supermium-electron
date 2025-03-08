@@ -8,17 +8,19 @@
 #include <string>
 #include <utility>
 
+#import <ServiceManagement/ServiceManagement.h>
+
 #include "base/apple/bridging.h"
 #include "base/apple/bundle_locations.h"
+#include "base/apple/scoped_cftyperef.h"
 #include "base/i18n/rtl.h"
 #include "base/mac/mac_util.h"
 #include "base/mac/mac_util.mm"
-#include "base/mac/scoped_cftyperef.h"
-#include "base/strings/string_number_conversions.h"
 #include "base/strings/sys_string_conversions.h"
 #include "chrome/browser/browser_process.h"
-#include "net/base/mac/url_conversions.h"
+#include "net/base/apple/url_conversions.h"
 #include "shell/browser/badging/badge_manager.h"
+#include "shell/browser/javascript_environment.h"
 #include "shell/browser/mac/dict_util.h"
 #include "shell/browser/mac/electron_application.h"
 #include "shell/browser/mac/electron_application_delegate.h"
@@ -27,6 +29,7 @@
 #include "shell/common/api/electron_api_native_image.h"
 #include "shell/common/application_info.h"
 #include "shell/common/gin_converters/image_converter.h"
+#include "shell/common/gin_converters/login_item_settings_converter.h"
 #include "shell/common/gin_helper/arguments.h"
 #include "shell/common/gin_helper/dictionary.h"
 #include "shell/common/gin_helper/error_thrower.h"
@@ -36,27 +39,16 @@
 #include "ui/gfx/image/image.h"
 #include "url/gurl.h"
 
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
-
 namespace electron {
 
 namespace {
 
-bool IsAppRTL() {
-  const std::string& locale = g_browser_process->GetApplicationLocale();
-  base::i18n::TextDirection text_direction =
-      base::i18n::GetTextDirectionForLocaleInStartUp(locale.c_str());
-  return text_direction == base::i18n::RIGHT_TO_LEFT;
-}
-
 NSString* GetAppPathForProtocol(const GURL& url) {
   NSURL* ns_url = [NSURL
       URLWithString:base::SysUTF8ToNSString(url.possibly_invalid_spec())];
-  base::ScopedCFTypeRef<CFErrorRef> out_err;
+  base::apple::ScopedCFTypeRef<CFErrorRef> out_err;
 
-  base::ScopedCFTypeRef<CFURLRef> openingApp(
+  base::apple::ScopedCFTypeRef<CFURLRef> openingApp(
       LSCopyDefaultApplicationURLForURL(base::apple::NSToCFPtrCast(ns_url),
                                         kLSRolesAll, out_err.InitializeInto()));
 
@@ -86,15 +78,24 @@ bool CheckLoginItemStatus(bool* is_hidden) {
   if (!login_items.Initialize())
     return false;
 
-  base::ScopedCFTypeRef<LSSharedFileListItemRef> item(
+  base::apple::ScopedCFTypeRef<LSSharedFileListItemRef> item(
       login_items.GetLoginItemForMainApp());
   if (!item.get())
     return false;
 
   if (is_hidden)
-    *is_hidden = base::mac::IsHiddenLoginItem(item);
+    *is_hidden = base::mac::IsHiddenLoginItem(item.get());
 
   return true;
+}
+
+LoginItemSettings GetLoginItemSettingsDeprecated() {
+  LoginItemSettings settings;
+  settings.open_at_login = CheckLoginItemStatus(&settings.open_as_hidden);
+  settings.restore_state = base::mac::WasLaunchedAsLoginItemRestoreState();
+  settings.opened_at_login = base::mac::WasLaunchedAsLoginOrResumeItem();
+  settings.opened_as_hidden = base::mac::WasLaunchedAsHiddenLoginItem();
+  return settings;
 }
 #endif
 
@@ -160,7 +161,7 @@ void Browser::Show() {
 }
 
 void Browser::AddRecentDocument(const base::FilePath& path) {
-  NSString* path_string = base::mac::FilePathToNSString(path);
+  NSString* path_string = base::apple::FilePathToNSString(path);
   if (!path_string)
     return;
   NSURL* u = [NSURL fileURLWithPath:path_string];
@@ -197,7 +198,7 @@ bool Browser::RemoveAsDefaultProtocolClient(const std::string& protocol,
   CFStringRef other = nil;
   for (CFIndex i = 0; i < CFArrayGetCount(bundleList); ++i) {
     other =
-        base::mac::CFCast<CFStringRef>(CFArrayGetValueAtIndex(bundleList, i));
+        base::apple::CFCast<CFStringRef>(CFArrayGetValueAtIndex(bundleList, i));
     if (![identifier isEqualToString:(__bridge NSString*)other]) {
       break;
     }
@@ -242,16 +243,17 @@ bool Browser::IsDefaultProtocolClient(const std::string& protocol,
 // TODO(codebytere): Use -[NSWorkspace URLForApplicationToOpenURL:] instead
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  base::ScopedCFTypeRef<CFStringRef> bundleId(LSCopyDefaultHandlerForURLScheme(
-      base::apple::NSToCFPtrCast(protocol_ns)));
+  base::apple::ScopedCFTypeRef<CFStringRef> bundleId(
+      LSCopyDefaultHandlerForURLScheme(
+          base::apple::NSToCFPtrCast(protocol_ns)));
 #pragma clang diagnostic pop
   if (!bundleId)
     return false;
 
   // Ensure the comparison is case-insensitive
   // as LS does not persist the case of the bundle id.
-  NSComparisonResult result =
-      [base::apple::CFToNSPtrCast(bundleId) caseInsensitiveCompare:identifier];
+  NSComparisonResult result = [base::apple::CFToNSPtrCast(bundleId.get())
+      caseInsensitiveCompare:identifier];
   return result == NSOrderedSame;
 }
 
@@ -264,7 +266,7 @@ std::u16string Browser::GetApplicationNameForProtocol(const GURL& url) {
   return app_display_name;
 }
 
-bool Browser::SetBadgeCount(absl::optional<int> count) {
+bool Browser::SetBadgeCount(std::optional<int> count) {
   DockSetBadgeText(!count.has_value() || count.value() != 0
                        ? badging::BadgeManager::GetBadgeString(count)
                        : "");
@@ -374,31 +376,78 @@ void Browser::ApplyForcedRTL() {
   }
 }
 
-Browser::LoginItemSettings Browser::GetLoginItemSettings(
+v8::Local<v8::Value> Browser::GetLoginItemSettings(
     const LoginItemSettings& options) {
   LoginItemSettings settings;
+  v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
+
+  if (options.type != "mainAppService" && options.service_name.empty()) {
+    gin_helper::ErrorThrower(isolate).ThrowTypeError(
+        "'name' is required when type is not mainAppService");
+    return v8::Local<v8::Value>();
+  }
+
 #if IS_MAS_BUILD()
-  settings.open_at_login = platform_util::GetLoginItemEnabled();
+  const std::string status =
+      platform_util::GetLoginItemEnabled(options.type, options.service_name);
+  settings.open_at_login =
+      status == "enabled" || status == "enabled-deprecated";
+  settings.opened_at_login = was_launched_at_login_;
+  if (@available(macOS 13, *))
+    settings.status = status;
 #else
-  settings.open_at_login = CheckLoginItemStatus(&settings.open_as_hidden);
-  settings.restore_state = base::mac::WasLaunchedAsLoginItemRestoreState();
-  settings.opened_at_login = base::mac::WasLaunchedAsLoginOrResumeItem();
-  settings.opened_as_hidden = base::mac::WasLaunchedAsHiddenLoginItem();
+  // If the app was previously set as a LoginItem with the deprecated API,
+  // we should report its LoginItemSettings via the old API.
+  LoginItemSettings settings_deprecated = GetLoginItemSettingsDeprecated();
+  if (@available(macOS 13, *)) {
+    const std::string status =
+        platform_util::GetLoginItemEnabled(options.type, options.service_name);
+    if (status == "enabled-deprecated") {
+      settings = settings_deprecated;
+    } else {
+      settings.open_at_login = status == "enabled";
+      settings.opened_at_login = was_launched_at_login_;
+      settings.status = status;
+    }
+  } else {
+    settings = settings_deprecated;
+  }
 #endif
-  return settings;
+  return gin::ConvertToV8(isolate, settings);
 }
 
 void Browser::SetLoginItemSettings(LoginItemSettings settings) {
-#if IS_MAS_BUILD()
-  if (!platform_util::SetLoginItemEnabled(settings.open_at_login)) {
-    LOG(ERROR) << "Unable to set login item enabled on sandboxed app.";
+  if (settings.type != "mainAppService" && settings.service_name.empty()) {
+    gin_helper::ErrorThrower(JavascriptEnvironment::GetIsolate())
+        .ThrowTypeError("'name' is required when type is not mainAppService");
+    return;
   }
+#if IS_MAS_BUILD()
+  platform_util::SetLoginItemEnabled(settings.type, settings.service_name,
+                                     settings.open_at_login);
 #else
-  if (settings.open_at_login) {
-    base::mac::AddToLoginItems(base::apple::MainBundlePath(),
-                               settings.open_as_hidden);
+  const base::FilePath bundle_path = base::apple::MainBundlePath();
+  if (@available(macOS 13, *)) {
+    // If the app was previously set as a LoginItem with the old API, remove it
+    // as a LoginItem via the old API before re-enabling with the new API.
+    const std::string status =
+        platform_util::GetLoginItemEnabled("mainAppService", "");
+    if (status == "enabled-deprecated") {
+      base::mac::RemoveFromLoginItems(bundle_path);
+      if (settings.open_at_login) {
+        platform_util::SetLoginItemEnabled(settings.type, settings.service_name,
+                                           settings.open_at_login);
+      }
+    } else {
+      platform_util::SetLoginItemEnabled(settings.type, settings.service_name,
+                                         settings.open_at_login);
+    }
   } else {
-    base::mac::RemoveFromLoginItems(base::apple::MainBundlePath());
+    if (settings.open_at_login) {
+      base::mac::AddToLoginItems(bundle_path, settings.open_as_hidden);
+    } else {
+      base::mac::RemoveFromLoginItems(bundle_path);
+    }
   }
 #endif
 }

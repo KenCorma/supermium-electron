@@ -6,10 +6,6 @@
 #include "base/apple/owned_objc.h"
 #include "shell/browser/ui/cocoa/electron_inspectable_web_contents_view.h"
 
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
-
 namespace electron {
 
 DelayedNativeViewHost::DelayedNativeViewHost(gfx::NativeView native_view)
@@ -19,9 +15,13 @@ DelayedNativeViewHost::~DelayedNativeViewHost() = default;
 
 void DelayedNativeViewHost::ViewHierarchyChanged(
     const views::ViewHierarchyChangedDetails& details) {
-  NativeViewHost::ViewHierarchyChanged(details);
-  if (details.is_add && GetWidget())
-    Attach(native_view_);
+  // NativeViewHost doesn't expect to have children, so filter the
+  // ViewHierarchyChanged events before passing them on.
+  if (details.child == this) {
+    NativeViewHost::ViewHierarchyChanged(details);
+    if (details.is_add && GetWidget() && !native_view())
+      Attach(native_view_);
+  }
 }
 
 bool DelayedNativeViewHost::OnMousePressed(const ui::MouseEvent& ui_event) {

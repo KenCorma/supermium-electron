@@ -3,14 +3,16 @@ import * as cp from 'node:child_process';
 import * as https from 'node:https';
 import * as http from 'node:http';
 import * as net from 'node:net';
-import * as fs from 'fs-extra';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
-import { app, BrowserWindow, Menu, session, net as electronNet, WebContents } from 'electron/main';
+import { app, BrowserWindow, Menu, session, net as electronNet, WebContents, utilityProcess } from 'electron/main';
 import { closeWindow, closeAllWindows } from './lib/window-helpers';
 import { ifdescribe, ifit, listen, waitUntil } from './lib/spec-helpers';
+import { collectStreamBody, getResponse } from './lib/net-helpers';
 import { once } from 'node:events';
 import split = require('split')
+import * as semver from 'semver';
 
 const fixturesPath = path.resolve(__dirname, 'fixtures');
 
@@ -492,7 +494,9 @@ describe('app module', () => {
   describe('BrowserWindow events', () => {
     let w: BrowserWindow = null as any;
 
-    afterEach(() => closeWindow(w).then(() => { w = null as any; }));
+    afterEach(() => {
+      closeWindow(w).then(() => { w = null as any; });
+    });
 
     it('should emit browser-window-focus event when window is focused', async () => {
       const emitted = once(app, 'browser-window-focus') as Promise<[any, BrowserWindow]>;
@@ -522,24 +526,6 @@ describe('app module', () => {
       w = new BrowserWindow({ show: false });
       const [, webContents] = await emitted;
       expect(webContents.id).to.equal(w.webContents.id);
-    });
-
-    // FIXME: re-enable this test on win32.
-    ifit(process.platform !== 'win32')('should emit renderer-process-crashed event when renderer crashes', async () => {
-      w = new BrowserWindow({
-        show: false,
-        webPreferences: {
-          nodeIntegration: true,
-          contextIsolation: false
-        }
-      });
-      await w.loadURL('about:blank');
-
-      const emitted = once(app, 'renderer-process-crashed') as Promise<[any, WebContents]>;
-      w.webContents.executeJavaScript('process.crash()');
-
-      const [, webContents] = await emitted;
-      expect(webContents).to.equal(w.webContents);
     });
 
     // FIXME: re-enable this test on win32.
@@ -609,7 +595,10 @@ describe('app module', () => {
     });
   });
 
-  ifdescribe(process.platform !== 'linux' && !process.mas)('app.get/setLoginItemSettings API', function () {
+  ifdescribe(process.platform !== 'linux' && !process.mas && (process.platform !== 'darwin' || process.arch === 'arm64'))('app.get/setLoginItemSettings API', function () {
+    const isMac = process.platform === 'darwin';
+    const isWin = process.platform === 'win32';
+
     const updateExe = path.resolve(path.dirname(process.execPath), '..', 'Update.exe');
     const processStartArgs = [
       '--processStart', `"${path.basename(process.execPath)}"`,
@@ -625,6 +614,8 @@ describe('app module', () => {
       '/f',
       '/d'
     ];
+    const productVersion = isMac ? cp.execSync('sw_vers -productVersion').toString().trim() : '';
+    const isVenturaOrHigher = semver.gt(semver.coerce(productVersion) || '0.0.0', '13.0.0');
 
     beforeEach(() => {
       app.setLoginItemSettings({ openAtLogin: false });
@@ -638,18 +629,19 @@ describe('app module', () => {
       app.setLoginItemSettings({ name: 'additionalEntry', openAtLogin: false });
     });
 
-    ifit(process.platform !== 'win32')('sets and returns the app as a login item', function () {
+    ifit(!isWin)('sets and returns the app as a login item', () => {
       app.setLoginItemSettings({ openAtLogin: true });
-      expect(app.getLoginItemSettings()).to.deep.equal({
-        openAtLogin: true,
-        openAsHidden: false,
-        wasOpenedAtLogin: false,
-        wasOpenedAsHidden: false,
-        restoreState: false
-      });
+
+      const settings = app.getLoginItemSettings();
+      expect(settings.openAtLogin).to.equal(true);
+      expect(settings.openAsHidden).to.equal(false);
+      expect(settings.wasOpenedAtLogin).to.equal(false);
+      expect(settings.wasOpenedAsHidden).to.equal(false);
+      expect(settings.restoreState).to.equal(false);
+      if (isVenturaOrHigher) expect(settings.status).to.equal('enabled');
     });
 
-    ifit(process.platform === 'win32')('sets and returns the app as a login item (windows)', function () {
+    ifit(isWin)('sets and returns the app as a login item (windows)', () => {
       app.setLoginItemSettings({ openAtLogin: true, enabled: true });
       expect(app.getLoginItemSettings()).to.deep.equal({
         openAtLogin: true,
@@ -686,18 +678,21 @@ describe('app module', () => {
       });
     });
 
-    ifit(process.platform !== 'win32')('adds a login item that loads in hidden mode', function () {
+    ifit(!isWin)('adds a login item that loads in hidden mode', () => {
       app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
-      expect(app.getLoginItemSettings()).to.deep.equal({
-        openAtLogin: true,
-        openAsHidden: process.platform === 'darwin' && !process.mas, // Only available on macOS
-        wasOpenedAtLogin: false,
-        wasOpenedAsHidden: false,
-        restoreState: false
-      });
+
+      const settings = app.getLoginItemSettings();
+      expect(settings.openAtLogin).to.equal(true);
+
+      const hasOpenAsHidden = process.platform === 'darwin' && !isVenturaOrHigher;
+      expect(settings.openAsHidden).to.equal(hasOpenAsHidden);
+      expect(settings.wasOpenedAtLogin).to.equal(false);
+      expect(settings.wasOpenedAsHidden).to.equal(false);
+      expect(settings.restoreState).to.equal(false);
+      if (isVenturaOrHigher) expect(settings.status).to.equal('enabled');
     });
 
-    ifit(process.platform === 'win32')('adds a login item that loads in hidden mode (windows)', function () {
+    ifit(isWin)('adds a login item that loads in hidden mode (windows)', () => {
       app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
       expect(app.getLoginItemSettings()).to.deep.equal({
         openAtLogin: true,
@@ -716,7 +711,7 @@ describe('app module', () => {
       });
     });
 
-    it('correctly sets and unsets the LoginItem', function () {
+    it('correctly sets and unsets the LoginItem', () => {
       expect(app.getLoginItemSettings().openAtLogin).to.equal(false);
 
       app.setLoginItemSettings({ openAtLogin: true });
@@ -726,20 +721,76 @@ describe('app module', () => {
       expect(app.getLoginItemSettings().openAtLogin).to.equal(false);
     });
 
-    ifit(process.platform === 'darwin')('correctly sets and unsets the LoginItem as hidden', function () {
+    ifit(isMac)('correctly sets and unsets the LoginItem as hidden', () => {
       expect(app.getLoginItemSettings().openAtLogin).to.equal(false);
       expect(app.getLoginItemSettings().openAsHidden).to.equal(false);
 
       app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
       expect(app.getLoginItemSettings().openAtLogin).to.equal(true);
-      expect(app.getLoginItemSettings().openAsHidden).to.equal(true);
+      expect(app.getLoginItemSettings().openAsHidden).to.equal(!isVenturaOrHigher);
 
       app.setLoginItemSettings({ openAtLogin: true, openAsHidden: false });
       expect(app.getLoginItemSettings().openAtLogin).to.equal(true);
       expect(app.getLoginItemSettings().openAsHidden).to.equal(false);
     });
 
-    ifit(process.platform === 'win32')('allows you to pass a custom executable and arguments', function () {
+    ifdescribe(isMac)('using SMAppService', () => {
+      ifit(isVenturaOrHigher)('can set a login item', () => {
+        app.setLoginItemSettings({
+          openAtLogin: true,
+          type: 'mainAppService'
+        });
+
+        expect(app.getLoginItemSettings()).to.deep.equal({
+          status: 'enabled',
+          openAtLogin: true,
+          openAsHidden: false,
+          restoreState: false,
+          wasOpenedAtLogin: false,
+          wasOpenedAsHidden: false
+        });
+      });
+
+      ifit(isVenturaOrHigher)('throws when setting non-default type with no name', () => {
+        expect(() => {
+          app.setLoginItemSettings({
+            openAtLogin: true,
+            type: 'daemonService'
+          });
+        }).to.throw(/'name' is required when type is not mainAppService/);
+      });
+
+      ifit(isVenturaOrHigher)('throws when getting non-default type with no name', () => {
+        expect(() => {
+          app.getLoginItemSettings({
+            type: 'daemonService'
+          });
+        }).to.throw(/'name' is required when type is not mainAppService/);
+      });
+
+      ifit(isVenturaOrHigher)('can unset a login item', () => {
+        app.setLoginItemSettings({
+          openAtLogin: true,
+          type: 'mainAppService'
+        });
+
+        app.setLoginItemSettings({
+          openAtLogin: false,
+          type: 'mainAppService'
+        });
+
+        expect(app.getLoginItemSettings()).to.deep.equal({
+          status: 'not-registered',
+          openAtLogin: false,
+          openAsHidden: false,
+          restoreState: false,
+          wasOpenedAtLogin: false,
+          wasOpenedAsHidden: false
+        });
+      });
+    });
+
+    ifit(isWin)('allows you to pass a custom executable and arguments', () => {
       app.setLoginItemSettings({ openAtLogin: true, path: updateExe, args: processStartArgs, enabled: true });
       expect(app.getLoginItemSettings().openAtLogin).to.equal(false);
       const openAtLoginTrueEnabledTrue = app.getLoginItemSettings({
@@ -769,7 +820,7 @@ describe('app module', () => {
       expect(openAtLoginFalseEnabledFalse.executableWillLaunchAtLogin).to.equal(false);
     });
 
-    ifit(process.platform === 'win32')('allows you to pass a custom name', function () {
+    ifit(isWin)('allows you to pass a custom name', () => {
       app.setLoginItemSettings({ openAtLogin: true });
       app.setLoginItemSettings({ openAtLogin: true, name: 'additionalEntry', enabled: false });
       expect(app.getLoginItemSettings()).to.deep.equal({
@@ -812,7 +863,7 @@ describe('app module', () => {
       });
     });
 
-    ifit(process.platform === 'win32')('finds launch items independent of args', function () {
+    ifit(isWin)('finds launch items independent of args', () => {
       app.setLoginItemSettings({ openAtLogin: true, args: ['arg1'] });
       app.setLoginItemSettings({ openAtLogin: true, name: 'additionalEntry', enabled: false, args: ['arg2'] });
       expect(app.getLoginItemSettings()).to.deep.equal({
@@ -838,7 +889,7 @@ describe('app module', () => {
       });
     });
 
-    ifit(process.platform === 'win32')('finds launch items independent of path quotation or casing', function () {
+    ifit(isWin)('finds launch items independent of path quotation or casing', () => {
       const expectation = {
         openAtLogin: false,
         openAsHidden: false,
@@ -874,7 +925,7 @@ describe('app module', () => {
       });
     });
 
-    ifit(process.platform === 'win32')('detects disabled by TaskManager', async function () {
+    ifit(isWin)('detects disabled by TaskManager', async () => {
       app.setLoginItemSettings({ openAtLogin: true, name: 'additionalEntry', enabled: true, args: ['arg1'] });
       const appProcess = cp.spawn('reg', [...regAddArgs, '030000000000000000000000']);
       await once(appProcess, 'exit');
@@ -895,7 +946,7 @@ describe('app module', () => {
       });
     });
 
-    ifit(process.platform === 'win32')('detects enabled by TaskManager', async function () {
+    ifit(isWin)('detects enabled by TaskManager', async () => {
       const expectation = {
         openAtLogin: false,
         openAsHidden: false,
@@ -1029,7 +1080,7 @@ describe('app module', () => {
 
     describe('sessionData', () => {
       const appPath = path.join(__dirname, 'fixtures', 'apps', 'set-path');
-      const appName = fs.readJsonSync(path.join(appPath, 'package.json')).name;
+      const appName = JSON.parse(fs.readFileSync(path.join(appPath, 'package.json'), 'utf8')).name;
       const userDataPath = path.join(app.getPath('appData'), appName);
       const tempBrowserDataPath = path.join(app.getPath('temp'), appName);
 
@@ -1050,8 +1101,8 @@ describe('app module', () => {
       };
 
       beforeEach(() => {
-        fs.removeSync(userDataPath);
-        fs.removeSync(tempBrowserDataPath);
+        fs.rmSync(userDataPath, { force: true, recursive: true });
+        fs.rmSync(tempBrowserDataPath, { force: true, recursive: true });
       });
 
       it('writes to userData by default', () => {
@@ -1229,9 +1280,9 @@ describe('app module', () => {
         'http://',
         'https://'
       ];
-      protocols.forEach((protocol) => {
+      for (const protocol of protocols) {
         expect(app.getApplicationNameForProtocol(protocol)).to.not.equal('');
-      });
+      }
     });
 
     it('returns an empty string for a bogus protocol', () => {
@@ -1470,19 +1521,6 @@ describe('app module', () => {
   });
 
   ifdescribe(!(process.platform === 'linux' && (process.arch === 'arm64' || process.arch === 'arm')))('sandbox options', () => {
-    // Our ARM tests are run on VSTS rather than CircleCI, and the Docker
-    // setup on VSTS disallows syscalls that Chrome requires for setting up
-    // sandboxing.
-    // See:
-    // - https://docs.docker.com/engine/security/seccomp/#significant-syscalls-blocked-by-the-default-profile
-    // - https://chromium.googlesource.com/chromium/src/+/70.0.3538.124/sandbox/linux/services/credentials.cc#292
-    // - https://github.com/docker/docker-ce/blob/ba7dfc59ccfe97c79ee0d1379894b35417b40bca/components/engine/profiles/seccomp/seccomp_default.go#L497
-    // - https://blog.jessfraz.com/post/how-to-use-new-docker-seccomp-profiles/
-    //
-    // Adding `--cap-add SYS_ADMIN` or `--security-opt seccomp=unconfined`
-    // to the Docker invocation allows the syscalls that Chrome needs, but
-    // are probably more permissive than we'd like.
-
     let appProcess: cp.ChildProcess = null as any;
     let server: net.Server = null as any;
     const socketPath = process.platform === 'win32' ? '\\\\.\\pipe\\electron-mixed-sandbox' : '/tmp/electron-mixed-sandbox';
@@ -1843,6 +1881,154 @@ describe('app module', () => {
 
     it('app.showAboutPanel() does not crash & runs asynchronously', () => {
       app.showAboutPanel();
+    });
+  });
+
+  describe('app.setProxy(options)', () => {
+    let server: http.Server;
+
+    afterEach(async () => {
+      if (server) {
+        server.close();
+      }
+      await app.setProxy({ mode: 'direct' as const });
+    });
+
+    it('allows configuring proxy settings', async () => {
+      const config = { proxyRules: 'http=myproxy:80' };
+      await app.setProxy(config);
+      const proxy = await app.resolveProxy('http://example.com/');
+      expect(proxy).to.equal('PROXY myproxy:80');
+    });
+
+    it('allows removing the implicit bypass rules for localhost', async () => {
+      const config = {
+        proxyRules: 'http=myproxy:80',
+        proxyBypassRules: '<-loopback>'
+      };
+
+      await app.setProxy(config);
+      const proxy = await app.resolveProxy('http://localhost');
+      expect(proxy).to.equal('PROXY myproxy:80');
+    });
+
+    it('allows configuring proxy settings with pacScript', async () => {
+      server = http.createServer((req, res) => {
+        const pac = `
+          function FindProxyForURL(url, host) {
+            return "PROXY myproxy:8132";
+          }
+        `;
+        res.writeHead(200, {
+          'Content-Type': 'application/x-ns-proxy-autoconfig'
+        });
+        res.end(pac);
+      });
+      const { url } = await listen(server);
+      {
+        const config = { pacScript: url };
+        await app.setProxy(config);
+        const proxy = await app.resolveProxy('https://google.com');
+        expect(proxy).to.equal('PROXY myproxy:8132');
+      }
+      {
+        const config = { mode: 'pac_script' as any, pacScript: url };
+        await app.setProxy(config);
+        const proxy = await app.resolveProxy('https://google.com');
+        expect(proxy).to.equal('PROXY myproxy:8132');
+      }
+    });
+
+    it('allows bypassing proxy settings', async () => {
+      const config = {
+        proxyRules: 'http=myproxy:80',
+        proxyBypassRules: '<local>'
+      };
+      await app.setProxy(config);
+      const proxy = await app.resolveProxy('http://example/');
+      expect(proxy).to.equal('DIRECT');
+    });
+
+    it('allows configuring proxy settings with mode `direct`', async () => {
+      const config = { mode: 'direct' as const, proxyRules: 'http=myproxy:80' };
+      await app.setProxy(config);
+      const proxy = await app.resolveProxy('http://example.com/');
+      expect(proxy).to.equal('DIRECT');
+    });
+
+    it('allows configuring proxy settings with mode `auto_detect`', async () => {
+      const config = { mode: 'auto_detect' as const };
+      await app.setProxy(config);
+    });
+
+    it('allows configuring proxy settings with mode `pac_script`', async () => {
+      const config = { mode: 'pac_script' as const };
+      await app.setProxy(config);
+      const proxy = await app.resolveProxy('http://example.com/');
+      expect(proxy).to.equal('DIRECT');
+    });
+
+    it('allows configuring proxy settings with mode `fixed_servers`', async () => {
+      const config = { mode: 'fixed_servers' as const, proxyRules: 'http=myproxy:80' };
+      await app.setProxy(config);
+      const proxy = await app.resolveProxy('http://example.com/');
+      expect(proxy).to.equal('PROXY myproxy:80');
+    });
+
+    it('allows configuring proxy settings with mode `system`', async () => {
+      const config = { mode: 'system' as const };
+      await app.setProxy(config);
+    });
+
+    it('disallows configuring proxy settings with mode `invalid`', async () => {
+      const config = { mode: 'invalid' as any };
+      await expect(app.setProxy(config)).to.eventually.be.rejectedWith(/Invalid mode/);
+    });
+
+    it('impacts proxy for requests made from utility process', async () => {
+      const utilityFixturePath = path.resolve(__dirname, 'fixtures', 'api', 'utility-process', 'api-net-spec.js');
+      const fn = async () => {
+        const urlRequest = electronNet.request('http://example.com/');
+        const response = await getResponse(urlRequest);
+        expect(response.statusCode).to.equal(200);
+        const message = await collectStreamBody(response);
+        expect(message).to.equal('ok from proxy\n');
+      };
+      server = http.createServer((req, res) => {
+        res.writeHead(200);
+        res.end('ok from proxy\n');
+      });
+      const { port, hostname } = await listen(server);
+      const config = { mode: 'fixed_servers' as const, proxyRules: `http=${hostname}:${port}` };
+      await app.setProxy(config);
+      const proxy = await app.resolveProxy('http://example.com/');
+      expect(proxy).to.equal(`PROXY ${hostname}:${port}`);
+      const child = utilityProcess.fork(utilityFixturePath, [], {
+        execArgv: ['--expose-gc']
+      });
+      child.postMessage({ fn: `(${fn})()` });
+      const [data] = await once(child, 'message');
+      expect(data.ok).to.be.true(data.message);
+      // Cleanup.
+      const [code] = await once(child, 'exit');
+      expect(code).to.equal(0);
+    });
+
+    it('does not impact proxy for requests made from main process', async () => {
+      server = http.createServer((req, res) => {
+        res.writeHead(200);
+        res.end('ok from server\n');
+      });
+      const { url } = await listen(server);
+      const config = { mode: 'fixed_servers' as const, proxyRules: 'http=myproxy:80' };
+      await app.setProxy(config);
+      const proxy = await app.resolveProxy('http://example.com/');
+      expect(proxy).to.equal('PROXY myproxy:80');
+      const urlRequest = electronNet.request(url);
+      const response = await getResponse(urlRequest);
+      expect(response.statusCode).to.equal(200);
+      const message = await collectStreamBody(response);
+      expect(message).to.equal('ok from server\n');
     });
   });
 });

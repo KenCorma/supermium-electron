@@ -8,9 +8,11 @@
 #import <Cocoa/Cocoa.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "electron/shell/common/api/api.mojom.h"
 #include "shell/browser/native_window.h"
 #include "ui/display/display_observer.h"
@@ -39,78 +41,77 @@ class NativeWindowMac : public NativeWindow,
   void Close() override;
   void CloseImmediately() override;
   void Focus(bool focus) override;
-  bool IsFocused() override;
+  bool IsFocused() const override;
   void Show() override;
   void ShowInactive() override;
   void Hide() override;
-  bool IsVisible() override;
-  bool IsEnabled() override;
+  bool IsVisible() const override;
+  bool IsEnabled() const override;
   void SetEnabled(bool enable) override;
   void Maximize() override;
   void Unmaximize() override;
-  bool IsMaximized() override;
+  bool IsMaximized() const override;
   void Minimize() override;
   void Restore() override;
-  bool IsMinimized() override;
+  bool IsMinimized() const override;
   void SetFullScreen(bool fullscreen) override;
   bool IsFullscreen() const override;
   void SetBounds(const gfx::Rect& bounds, bool animate = false) override;
-  gfx::Rect GetBounds() override;
-  bool IsNormal() override;
-  gfx::Rect GetNormalBounds() override;
+  gfx::Rect GetBounds() const override;
+  bool IsNormal() const override;
+  gfx::Rect GetNormalBounds() const override;
+  void SetSizeConstraints(
+      const extensions::SizeConstraints& window_constraints) override;
   void SetContentSizeConstraints(
       const extensions::SizeConstraints& size_constraints) override;
   void SetResizable(bool resizable) override;
   bool MoveAbove(const std::string& sourceId) override;
   void MoveTop() override;
-  bool IsResizable() override;
+  bool IsResizable() const override;
   void SetMovable(bool movable) override;
-  bool IsMovable() override;
+  bool IsMovable() const override;
   void SetMinimizable(bool minimizable) override;
-  bool IsMinimizable() override;
+  bool IsMinimizable() const override;
   void SetMaximizable(bool maximizable) override;
-  bool IsMaximizable() override;
+  bool IsMaximizable() const override;
   void SetFullScreenable(bool fullscreenable) override;
-  bool IsFullScreenable() override;
+  bool IsFullScreenable() const override;
   void SetClosable(bool closable) override;
-  bool IsClosable() override;
+  bool IsClosable() const override;
   void SetAlwaysOnTop(ui::ZOrderLevel z_order,
                       const std::string& level,
                       int relative_level) override;
-  std::string GetAlwaysOnTopLevel() override;
-  ui::ZOrderLevel GetZOrderLevel() override;
+  std::string GetAlwaysOnTopLevel() const override;
+  ui::ZOrderLevel GetZOrderLevel() const override;
   void Center() override;
   void Invalidate() override;
   void SetTitle(const std::string& title) override;
-  std::string GetTitle() override;
+  std::string GetTitle() const override;
   void FlashFrame(bool flash) override;
   void SetSkipTaskbar(bool skip) override;
   void SetExcludedFromShownWindowsMenu(bool excluded) override;
-  bool IsExcludedFromShownWindowsMenu() override;
+  bool IsExcludedFromShownWindowsMenu() const override;
   void SetSimpleFullScreen(bool simple_fullscreen) override;
-  bool IsSimpleFullScreen() override;
+  bool IsSimpleFullScreen() const override;
   void SetKiosk(bool kiosk) override;
-  bool IsKiosk() override;
+  bool IsKiosk() const override;
   void SetBackgroundColor(SkColor color) override;
-  SkColor GetBackgroundColor() override;
+  SkColor GetBackgroundColor() const override;
   void InvalidateShadow() override;
   void SetHasShadow(bool has_shadow) override;
-  bool HasShadow() override;
+  bool HasShadow() const override;
   void SetOpacity(const double opacity) override;
-  double GetOpacity() override;
+  double GetOpacity() const override;
   void SetRepresentedFilename(const std::string& filename) override;
-  std::string GetRepresentedFilename() override;
+  std::string GetRepresentedFilename() const override;
   void SetDocumentEdited(bool edited) override;
-  bool IsDocumentEdited() override;
+  bool IsDocumentEdited() const override;
   void SetIgnoreMouseEvents(bool ignore, bool forward) override;
-  bool IsHiddenInMissionControl() override;
+  bool IsHiddenInMissionControl() const override;
   void SetHiddenInMissionControl(bool hidden) override;
   void SetContentProtection(bool enable) override;
   void SetFocusable(bool focusable) override;
-  bool IsFocusable() override;
-  void AddBrowserView(NativeBrowserView* browser_view) override;
-  void RemoveBrowserView(NativeBrowserView* browser_view) override;
-  void SetTopBrowserView(NativeBrowserView* browser_view) override;
+  bool IsFocusable() const override;
   void SetParentWindow(NativeWindow* parent) override;
   content::DesktopMediaID GetDesktopMediaID() const override;
   gfx::NativeView GetNativeView() const override;
@@ -123,13 +124,13 @@ class NativeWindowMac : public NativeWindow,
   void SetVisibleOnAllWorkspaces(bool visible,
                                  bool visibleOnFullScreen,
                                  bool skipTransformProcessType) override;
-  bool IsVisibleOnAllWorkspaces() override;
+  bool IsVisibleOnAllWorkspaces() const override;
   void SetAutoHideCursor(bool auto_hide) override;
   void SetVibrancy(const std::string& type) override;
   void SetWindowButtonVisibility(bool visible) override;
   bool GetWindowButtonVisibility() const override;
-  void SetWindowButtonPosition(absl::optional<gfx::Point> position) override;
-  absl::optional<gfx::Point> GetWindowButtonPosition() const override;
+  void SetWindowButtonPosition(std::optional<gfx::Point> position) override;
+  std::optional<gfx::Point> GetWindowButtonPosition() const override;
   void RedrawTrafficLights() override;
   void UpdateFrame() override;
   void SetTouchBar(
@@ -143,6 +144,7 @@ class NativeWindowMac : public NativeWindow,
   void MoveTabToNewWindow() override;
   void ToggleTabBar() override;
   bool AddTabbedWindow(NativeWindow* window) override;
+  std::optional<std::string> GetTabbingIdentifier() const override;
   void SetAspectRatio(double aspect_ratio,
                       const gfx::Size& extra_size) override;
   void PreviewFile(const std::string& path,
@@ -150,7 +152,7 @@ class NativeWindowMac : public NativeWindow,
   void CloseFilePreview() override;
   gfx::Rect ContentBoundsToWindowBounds(const gfx::Rect& bounds) const override;
   gfx::Rect WindowBoundsToContentBounds(const gfx::Rect& bounds) const override;
-  gfx::Rect GetWindowControlsOverlayRect() override;
+  std::optional<gfx::Rect> GetWindowControlsOverlayRect() override;
   void NotifyWindowEnterFullScreen() override;
   void NotifyWindowLeaveFullScreen() override;
   void SetActive(bool is_key) override;
@@ -164,6 +166,7 @@ class NativeWindowMac : public NativeWindow,
   void DetachChildren() override;
 
   void NotifyWindowWillEnterFullScreen();
+  void NotifyWindowDidFailToEnterFullScreen();
   void NotifyWindowWillLeaveFullScreen();
 
   // Cleanup observers when window is getting closed. Note that the destructor
@@ -175,6 +178,8 @@ class NativeWindowMac : public NativeWindow,
 
   void UpdateWindowOriginalFrame();
 
+  bool IsPanel();
+
   // Set the attribute of NSWindow while work around a bug of zoom button.
   bool HasStyleMask(NSUInteger flag) const;
   void SetStyleMask(bool on, NSUInteger flag);
@@ -185,6 +190,9 @@ class NativeWindowMac : public NativeWindow,
   void SetHasDeferredWindowClose(bool defer_close) {
     has_deferred_window_close_ = defer_close;
   }
+
+  void set_wants_to_be_visible(bool visible) { wants_to_be_visible_ = visible; }
+  bool wants_to_be_visible() const { return wants_to_be_visible_; }
 
   enum class VisualEffectState {
     kFollowWindow,
@@ -232,6 +240,8 @@ class NativeWindowMac : public NativeWindow,
   void InternalSetParentWindow(NativeWindow* parent, bool attach);
   void SetForwardMouseMessages(bool forward);
 
+  void UpdateZoomButton();
+
   ElectronNSWindow* window_;  // Weak ref, managed by widget_.
 
   ElectronNSWindowDelegate* __strong window_delegate_;
@@ -244,13 +254,17 @@ class NativeWindowMac : public NativeWindow,
   bool fullscreen_before_kiosk_ = false;
   bool is_kiosk_ = false;
   bool zoom_to_page_width_ = false;
-  absl::optional<gfx::Point> traffic_light_position_;
+  std::optional<gfx::Point> traffic_light_position_;
 
   // Trying to close an NSWindow during a fullscreen transition will cause the
   // window to lock up. Use this to track if CloseWindow was called during a
   // fullscreen transition, to defer the -[NSWindow close] call until the
   // transition is complete.
   bool has_deferred_window_close_ = false;
+
+  // If true, the window is either visible, or wants to be visible but is
+  // currently hidden due to having a hidden parent.
+  bool wants_to_be_visible_ = false;
 
   NSInteger attention_request_id_ = 0;  // identifier from requestUserAttention
 
@@ -262,7 +276,7 @@ class NativeWindowMac : public NativeWindow,
 
   // The visibility mode of window button controls when explicitly set through
   // setWindowButtonVisibility().
-  absl::optional<bool> window_button_visibility_;
+  std::optional<bool> window_button_visibility_;
 
   // Controls the position and visibility of window buttons.
   WindowButtonsProxy* __strong buttons_proxy_;
@@ -286,6 +300,9 @@ class NativeWindowMac : public NativeWindow,
   NSRect default_frame_for_zoom_;
 
   std::string vibrancy_type_;
+
+  // A views::NativeViewHost wrapping the vibrant view. Owned by the root view.
+  raw_ptr<views::NativeViewHost> vibrant_native_view_host_ = nullptr;
 
   // The presentation options before entering simple fullscreen mode.
   NSApplicationPresentationOptions simple_fullscreen_options_;

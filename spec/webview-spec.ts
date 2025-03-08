@@ -9,6 +9,7 @@ import * as http from 'node:http';
 import * as auth from 'basic-auth';
 import { once } from 'node:events';
 import { setTimeout } from 'node:timers/promises';
+import { HexColors, ScreenCapture } from './lib/screen-helpers';
 
 declare let WebView: any;
 const features = process._linkedBinding('electron_common_features');
@@ -249,7 +250,7 @@ describe('<webview> tag', function () {
       });
       await w.loadURL('about:blank');
       const src = url.format({
-        pathname: `${fixtures.replace(/\\/g, '/')}/pages/theme-color.html`,
+        pathname: `${fixtures.replaceAll('\\', '/')}/pages/theme-color.html`,
         protocol: 'file',
         slashes: true
       });
@@ -297,10 +298,11 @@ describe('<webview> tag', function () {
           const showPanelIntervalId = setInterval(function () {
             if (!webContents.isDestroyed() && webContents.devToolsWebContents) {
               webContents.devToolsWebContents.executeJavaScript('(' + function () {
-                const { UI } = (window as any);
-                const tabs = UI.inspectorView.tabbedPane.tabs;
+                const { EUI } = (window as any);
+                const instance = EUI.InspectorView.InspectorView.instance();
+                const tabs = instance.tabbedPane.tabs;
                 const lastPanelId: any = tabs[tabs.length - 1].id;
-                UI.inspectorView.showPanel(lastPanelId);
+                instance.showPanel(lastPanelId);
               }.toString() + ')()');
             } else {
               clearInterval(showPanelIntervalId);
@@ -350,6 +352,31 @@ describe('<webview> tag', function () {
       const [, zoomFactor, zoomLevel] = await zoomEventPromise;
       expect(zoomFactor).to.equal(1.2);
       expect(zoomLevel).to.equal(1);
+    });
+
+    it('maintains the zoom level for a given host in the same session after navigation', () => {
+      const w = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          webviewTag: true,
+          nodeIntegration: true,
+          contextIsolation: false
+        }
+      });
+
+      const zoomPromise = new Promise<void>((resolve) => {
+        ipcMain.on('webview-zoom-persist-level', (_event, values) => {
+          resolve(values);
+        });
+      });
+
+      w.loadFile(path.join(fixtures, 'pages', 'webview-zoom-change-persist-host.html'));
+
+      expect(zoomPromise).to.eventually.deep.equal({
+        initialZoomLevel: 2,
+        switchZoomLevel: 3,
+        finalZoomLevel: 2
+      });
     });
 
     it('maintains zoom level on navigation', async () => {
@@ -546,17 +573,16 @@ describe('<webview> tag', function () {
       await close;
     });
 
-    // Sending ESC via sendInputEvent only works on Windows.
-    ifit(process.platform === 'win32')('pressing ESC should unfullscreen window', async () => {
+    it('pressing ESC should unfullscreen window', async () => {
       const [w, webview] = await loadWebViewWindow();
       const enterFullScreen = once(w, 'enter-full-screen');
       await webview.executeJavaScript('document.getElementById("div").requestFullscreen()', true);
       await enterFullScreen;
 
       const leaveFullScreen = once(w, 'leave-full-screen');
-      w.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+      webview.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
       await leaveFullScreen;
-      await setTimeout();
+      await setTimeout(1000);
       expect(w.isFullScreen()).to.be.false();
 
       const close = once(w, 'closed');
@@ -669,9 +695,9 @@ describe('<webview> tag', function () {
 
       const [, content] = await once(ipcMain, 'answer');
       const expectedContent =
-          'Blocked a frame with origin "file://" from accessing a cross-origin frame.';
+          /Failed to read a named property 'toString' from 'Location': Blocked a frame with origin "(.*?)" from accessing a cross-origin frame./;
 
-      expect(content).to.equal(expectedContent);
+      expect(content).to.match(expectedContent);
     });
 
     it('emits a browser-window-created event', async () => {
@@ -745,6 +771,67 @@ describe('<webview> tag', function () {
           typeofOpenedWindow: 'object'
         }
       });
+    });
+  });
+
+  describe('webpreferences attribute', () => {
+    const WINDOW_BACKGROUND_COLOR = '#55ccbb';
+
+    let w: BrowserWindow;
+    before(async () => {
+      w = new BrowserWindow({
+        webPreferences: {
+          webviewTag: true,
+          nodeIntegration: true,
+          contextIsolation: false
+        }
+      });
+      await w.loadURL(`file://${fixtures}/pages/flex-webview.html`);
+      w.setBackgroundColor(WINDOW_BACKGROUND_COLOR);
+    });
+    afterEach(async () => {
+      await w.webContents.executeJavaScript(`{
+        for (const el of document.querySelectorAll('webview')) el.remove();
+      }`);
+    });
+    after(() => w.close());
+
+    // Linux and arm64 platforms (WOA and macOS) do not return any capture sources
+    ifit(process.platform === 'darwin' && process.arch === 'x64')('is transparent by default', async () => {
+      await loadWebView(w.webContents, {
+        src: 'data:text/html,foo'
+      });
+
+      await setTimeout(1000);
+
+      const screenCapture = await ScreenCapture.create();
+      await screenCapture.expectColorAtCenterMatches(WINDOW_BACKGROUND_COLOR);
+    });
+
+    // Linux and arm64 platforms (WOA and macOS) do not return any capture sources
+    ifit(process.platform === 'darwin' && process.arch === 'x64')('remains transparent when set', async () => {
+      await loadWebView(w.webContents, {
+        src: 'data:text/html,foo',
+        webpreferences: 'transparent=yes'
+      });
+
+      await setTimeout(1000);
+
+      const screenCapture = await ScreenCapture.create();
+      await screenCapture.expectColorAtCenterMatches(WINDOW_BACKGROUND_COLOR);
+    });
+
+    // Linux and arm64 platforms (WOA and macOS) do not return any capture sources
+    ifit(process.platform === 'darwin' && process.arch === 'x64')('can disable transparency', async () => {
+      await loadWebView(w.webContents, {
+        src: 'data:text/html,foo',
+        webpreferences: 'transparent=no'
+      });
+
+      await setTimeout(1000);
+
+      const screenCapture = await ScreenCapture.create();
+      await screenCapture.expectColorAtCenterMatches(HexColors.WHITE);
     });
   });
 
@@ -929,7 +1016,7 @@ describe('<webview> tag', function () {
     });
     afterEach(async () => {
       await w.executeJavaScript(`{
-        document.querySelectorAll('webview').forEach(el => el.remove())
+        for (const el of document.querySelectorAll('webview')) el.remove();
       }`);
     });
     after(closeAllWindows);
@@ -1411,7 +1498,7 @@ describe('<webview> tag', function () {
     });
     afterEach(async () => {
       await w.executeJavaScript(`{
-        document.querySelectorAll('webview').forEach(el => el.remove())
+        for (const el of document.querySelectorAll('webview')) el.remove();
       }`);
     });
     after(closeAllWindows);
@@ -1791,7 +1878,7 @@ describe('<webview> tag', function () {
     });
     afterEach(async () => {
       await w.executeJavaScript(`{
-        document.querySelectorAll('webview').forEach(el => el.remove())
+        for (const el of document.querySelectorAll('webview')) el.remove();
       }`);
     });
     after(closeAllWindows);
@@ -2018,27 +2105,36 @@ describe('<webview> tag', function () {
       }
     });
 
-    // TODO(miniak): figure out why this is failing on windows
-    ifdescribe(process.platform !== 'win32')('<webview>.capturePage()', () => {
-      it('returns a Promise with a NativeImage', async () => {
+    // FIXME: This test is flaking constantly on Linux and macOS.
+    xdescribe('<webview>.capturePage()', () => {
+      it('returns a Promise with a NativeImage', async function () {
+        this.retries(5);
+
         const src = 'data:text/html,%3Ch1%3EHello%2C%20World!%3C%2Fh1%3E';
         await loadWebViewAndWaitForEvent(w, { src }, 'did-stop-loading');
 
-        // Retry a few times due to flake.
-        for (let i = 0; i < 5; i++) {
-          try {
-            const image = await w.executeJavaScript('webview.capturePage()');
-            const imgBuffer = image.toPNG();
+        const image = await w.executeJavaScript('webview.capturePage()');
+        expect(image.isEmpty()).to.be.false();
 
-            // Check the 25th byte in the PNG.
-            // Values can be 0,2,3,4, or 6. We want 6, which is RGB + Alpha
-            expect(imgBuffer[25]).to.equal(6);
-            return;
-          } catch {
-            /* drop the error */
-          }
-        }
-        expect(false).to.be.true('could not successfully capture the page');
+        // Check the 25th byte in the PNG.
+        // Values can be 0,2,3,4, or 6. We want 6, which is RGB + Alpha
+        const imgBuffer = image.toPNG();
+        expect(imgBuffer[25]).to.equal(6);
+      });
+
+      it('returns a Promise with a NativeImage in the renderer', async function () {
+        this.retries(5);
+
+        const src = 'data:text/html,%3Ch1%3EHello%2C%20World!%3C%2Fh1%3E';
+        await loadWebViewAndWaitForEvent(w, { src }, 'did-stop-loading');
+
+        const byte = await w.executeJavaScript(`new Promise(resolve => {
+          webview.capturePage().then(image => {
+            resolve(image.toPNG()[25])
+          });
+        })`);
+
+        expect(byte).to.equal(6);
       });
     });
 
@@ -2088,7 +2184,7 @@ describe('<webview> tag', function () {
     });
     afterEach(async () => {
       await w.executeJavaScript(`{
-        document.querySelectorAll('webview').forEach(el => el.remove())
+        for (const el of document.querySelectorAll('webview')) el.remove();
       }`);
     });
     after(closeAllWindows);

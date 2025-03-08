@@ -18,15 +18,17 @@ NodeBindingsMac::NodeBindingsMac(BrowserEnvironment browser_env)
     : NodeBindings(browser_env) {}
 
 void NodeBindingsMac::PollEvents() {
+  auto* const event_loop = uv_loop();
+
   struct timeval tv;
-  int timeout = uv_backend_timeout(uv_loop_);
+  int timeout = uv_backend_timeout(event_loop);
   if (timeout != -1) {
     tv.tv_sec = timeout / 1000;
     tv.tv_usec = (timeout % 1000) * 1000;
   }
 
   fd_set readset;
-  int fd = uv_backend_fd(uv_loop_);
+  int fd = uv_backend_fd(event_loop);
   FD_ZERO(&readset);
   FD_SET(fd, &readset);
 
@@ -39,8 +41,8 @@ void NodeBindingsMac::PollEvents() {
 }
 
 // static
-NodeBindings* NodeBindings::Create(BrowserEnvironment browser_env) {
-  return new NodeBindingsMac(browser_env);
+std::unique_ptr<NodeBindings> NodeBindings::Create(BrowserEnvironment env) {
+  return std::make_unique<NodeBindingsMac>(env);
 }
 
 }  // namespace electron

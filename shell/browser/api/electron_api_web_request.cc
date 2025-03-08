@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "base/containers/contains.h"
@@ -18,7 +19,6 @@
 #include "gin/converter.h"
 #include "gin/dictionary.h"
 #include "gin/object_template_builder.h"
-#include "net/http/http_content_disposition.h"
 #include "shell/browser/api/electron_api_session.h"
 #include "shell/browser/api/electron_api_web_contents.h"
 #include "shell/browser/api/electron_api_web_frame_main.h"
@@ -33,8 +33,8 @@
 #include "shell/common/gin_helper/dictionary.h"
 
 static constexpr auto ResourceTypes =
-    base::MakeFixedFlatMapSorted<base::StringPiece,
-                                 extensions::WebRequestResourceType>({
+    base::MakeFixedFlatMap<std::string_view,
+                           extensions::WebRequestResourceType>({
         {"cspReport", extensions::WebRequestResourceType::CSP_REPORT},
         {"font", extensions::WebRequestResourceType::FONT},
         {"image", extensions::WebRequestResourceType::IMAGE},
@@ -77,7 +77,7 @@ struct UserData : public base::SupportsUserData::Data {
   raw_ptr<WebRequest> data;
 };
 
-extensions::WebRequestResourceType ParseResourceType(base::StringPiece value) {
+extensions::WebRequestResourceType ParseResourceType(std::string_view value) {
   if (const auto* iter = ResourceTypes.find(value); iter != ResourceTypes.end())
     return iter->second;
 
@@ -97,26 +97,7 @@ v8::Local<v8::Value> HttpResponseHeadersToV8(
     std::string key;
     std::string value;
     while (headers->EnumerateHeaderLines(&iter, &key, &value)) {
-      // Note that Web servers not developed with nodejs allow non-utf8
-      // characters in content-disposition's filename field. Use Chromium's
-      // HttpContentDisposition class to decode the correct encoding instead of
-      // arbitrarily converting it to UTF8. It should also be noted that if the
-      // encoding is not specified, HttpContentDisposition will transcode
-      // according to the system's encoding.
-      if (base::EqualsCaseInsensitiveASCII("Content-Disposition", key) &&
-          !value.empty()) {
-        net::HttpContentDisposition header(value, std::string());
-        std::string decodedFilename =
-            header.is_attachment() ? " attachment" : " inline";
-        // The filename must be encased in double quotes for serialization
-        // to happen correctly.
-        std::string filename = "\"" + header.filename() + "\"";
-        value = decodedFilename + "; filename=" + filename;
-      }
-      base::Value::List* values = response_headers.FindList(key);
-      if (!values)
-        values = &response_headers.Set(key, base::Value::List())->GetList();
-      values->Append(base::Value(value));
+      response_headers.EnsureList(key)->Append(value);
     }
   }
   return gin::ConvertToV8(v8::Isolate::GetCurrent(), response_headers);
@@ -128,7 +109,8 @@ void ToDictionary(gin_helper::Dictionary* details,
   details->Set("id", info->id);
   details->Set("url", info->url);
   details->Set("method", info->method);
-  details->Set("timestamp", base::Time::Now().ToDoubleT() * 1000);
+  details->Set("timestamp",
+               base::Time::Now().InSecondsFSinceUnixEpoch() * 1000);
   details->Set("resourceType", info->web_request_type);
   if (!info->response_ip.empty())
     details->Set("ip", info->response_ip);

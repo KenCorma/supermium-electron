@@ -3,57 +3,99 @@ From: Kyrylo Hrechykhin <khrechykhin@microsoft.com>
 Date: Thu, 6 Oct 2022 18:30:53 +0200
 Subject: fix: on-screen-keyboard hides on input blur in webview
 
-Changes introduced by this patch fix issue where OSK does not hide on
-input rendered inside webview is blurred. This patch should be removed
-when proper fix in chromium repo is available.
-
-Note: the issue still occurs if input rendered in webview blurred due
-to touch outside of webview. It is caused by webview implementation
-details. Specificaly due to webview has its own tree nodes and focused
-node does not change in this case.
+Work around OSK not hiding by notifying RenderWidgetHostViewAura of
+focus node change via TextInputManager.
 
 chromium-bug: https://crbug.com/1369605
 
-diff --git a/content/browser/renderer_host/render_widget_host_view_child_frame.cc b/content/browser/renderer_host/render_widget_host_view_child_frame.cc
-index 7f713269d7234448a7e59c8d3acdeeb74cb6a412..fe042289beb7d0239521f580aff9478a79719477 100644
---- a/content/browser/renderer_host/render_widget_host_view_child_frame.cc
-+++ b/content/browser/renderer_host/render_widget_host_view_child_frame.cc
-@@ -1006,6 +1006,12 @@ RenderWidgetHostViewChildFrame::DidUpdateVisualProperties(
-   return viz::ScopedSurfaceIdAllocator(std::move(allocation_task));
+diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/content/browser/renderer_host/render_widget_host_view_aura.cc
+index f18a3d6b4287d986c31db3385541cd20db68ecd5..a68019420d1a30c276a048bf770158a55f7dbe1b 100644
+--- a/content/browser/renderer_host/render_widget_host_view_aura.cc
++++ b/content/browser/renderer_host/render_widget_host_view_aura.cc
+@@ -2920,6 +2920,12 @@ void RenderWidgetHostViewAura::OnTextSelectionChanged(
+   }
  }
  
-+void RenderWidgetHostViewChildFrame::FocusedNodeChanged(
-+    bool is_editable_node,
-+    const gfx::Rect& node_bounds_in_screen) {
-+  NOTREACHED();
++void RenderWidgetHostViewAura::OnFocusedInputElementChanged(
++    TextInputManager* text_input_manager,
++    RenderWidgetHostViewBase* view) {
++  FocusedNodeChanged(false, {});
 +}
 +
- ui::TextInputType RenderWidgetHostViewChildFrame::GetTextInputType() const {
-   if (!text_input_manager_)
-     return ui::TEXT_INPUT_TYPE_NONE;
-diff --git a/content/browser/renderer_host/render_widget_host_view_child_frame.h b/content/browser/renderer_host/render_widget_host_view_child_frame.h
-index 1e9dcbb9f0a5e401a50d63be490755bc3eeaa1a3..1e2e0a321df6fe9dea4401ed327c93730a4fea07 100644
---- a/content/browser/renderer_host/render_widget_host_view_child_frame.h
-+++ b/content/browser/renderer_host/render_widget_host_view_child_frame.h
-@@ -182,6 +182,8 @@ class CONTENT_EXPORT RenderWidgetHostViewChildFrame
-   void DisableAutoResize(const gfx::Size& new_size) override;
-   viz::ScopedSurfaceIdAllocator DidUpdateVisualProperties(
-       const cc::RenderFrameMetadata& metadata) override;
-+  void FocusedNodeChanged(bool is_editable_node,
-+      const gfx::Rect& node_bounds_in_screen) override;
+ void RenderWidgetHostViewAura::SetPopupChild(
+     RenderWidgetHostViewAura* popup_child_host_view) {
+   popup_child_host_view_ = popup_child_host_view;
+diff --git a/content/browser/renderer_host/render_widget_host_view_aura.h b/content/browser/renderer_host/render_widget_host_view_aura.h
+index bb83b675c67b88b2826a550b77909e614c4edb1b..8aef94cf0b1d05c5c6dc5ed7dadc73fae5b0cb3e 100644
+--- a/content/browser/renderer_host/render_widget_host_view_aura.h
++++ b/content/browser/renderer_host/render_widget_host_view_aura.h
+@@ -625,6 +625,8 @@ class CONTENT_EXPORT RenderWidgetHostViewAura
+       RenderWidgetHostViewBase* updated_view) override;
+   void OnTextSelectionChanged(TextInputManager* text_input_mangager,
+                               RenderWidgetHostViewBase* updated_view) override;
++  void OnFocusedInputElementChanged(TextInputManager* text_input_manager,
++                                    RenderWidgetHostViewBase* view) override;
  
-   // RenderFrameMetadataProvider::Observer implementation.
-   void OnRenderFrameMetadataChangedBeforeActivation(
+   // Detaches |this| from the input method object.
+   // is_removed flag is true if this is called while the window is
+diff --git a/content/browser/renderer_host/text_input_manager.cc b/content/browser/renderer_host/text_input_manager.cc
+index 1fd6203a11e5fef9a680e935b44226795932eea2..a3de9dc52df2f8bd2427db235a4ba4a41040ff3b 100644
+--- a/content/browser/renderer_host/text_input_manager.cc
++++ b/content/browser/renderer_host/text_input_manager.cc
+@@ -166,6 +166,7 @@ void TextInputManager::UpdateTextInputState(
+ 
+   if (text_input_state.type == ui::TEXT_INPUT_TYPE_NONE &&
+       active_view_ != view) {
++    NotifyFocusedInputElementChanged(active_view_);
+     // We reached here because an IPC is received to reset the TextInputState
+     // for |view|. But |view| != |active_view_|, which suggests that at least
+     // one other view has become active and we have received the corresponding
+@@ -452,6 +453,12 @@ void TextInputManager::NotifyObserversAboutInputStateUpdate(
+     observer.OnUpdateTextInputStateCalled(this, updated_view, did_update_state);
+ }
+ 
++void TextInputManager::NotifyFocusedInputElementChanged(
++    RenderWidgetHostViewBase* view) {
++  for (auto& observer : observer_list_)
++    observer.OnFocusedInputElementChanged(this, view);
++}
++
+ TextInputManager::SelectionRegion::SelectionRegion() = default;
+ 
+ TextInputManager::SelectionRegion::SelectionRegion(
+diff --git a/content/browser/renderer_host/text_input_manager.h b/content/browser/renderer_host/text_input_manager.h
+index 0c7d5b2c1d3e97420913bd643bb2a524a76fc286..653793fa480f035ce11e079b370bf5ed5cacfa65 100644
+--- a/content/browser/renderer_host/text_input_manager.h
++++ b/content/browser/renderer_host/text_input_manager.h
+@@ -71,6 +71,10 @@ class CONTENT_EXPORT TextInputManager {
+     virtual void OnTextSelectionChanged(
+         TextInputManager* text_input_manager,
+         RenderWidgetHostViewBase* updated_view) {}
++    // Called when focused input element has changed
++    virtual void OnFocusedInputElementChanged(
++        TextInputManager* text_input_manager,
++        RenderWidgetHostViewBase* updated_view) {}
+   };
+ 
+   // Text selection bounds.
+@@ -275,6 +279,7 @@ class CONTENT_EXPORT TextInputManager {
+ 
+   void NotifyObserversAboutInputStateUpdate(RenderWidgetHostViewBase* view,
+                                             bool did_update_state);
++  void NotifyFocusedInputElementChanged(RenderWidgetHostViewBase* view);
+ 
+   // The view with active text input state, i.e., a focused <input> element.
+   // It will be nullptr if no such view exists. Note that the active view
 diff --git a/content/browser/web_contents/web_contents_impl.cc b/content/browser/web_contents/web_contents_impl.cc
-index 36cd52f18c83adc007d6f896a4136a93f0fa1c83..99f6e45fe48449c2dbe88514648a4d907999e282 100644
+index a916cc8491ccf00deae90f1a490df54f334f10d1..b0b1d0aea5bf251411d0cab06562fd77d8d7c549 100644
 --- a/content/browser/web_contents/web_contents_impl.cc
 +++ b/content/browser/web_contents/web_contents_impl.cc
-@@ -8319,7 +8319,7 @@ void WebContentsImpl::OnFocusedElementChangedInFrame(
+@@ -8871,7 +8871,7 @@ void WebContentsImpl::OnFocusedElementChangedInFrame(
                          "WebContentsImpl::OnFocusedElementChangedInFrame",
                          "render_frame_host", frame);
    RenderWidgetHostViewBase* root_view =
 -      static_cast<RenderWidgetHostViewBase*>(GetRenderWidgetHostView());
 +      static_cast<RenderWidgetHostViewBase*>(GetTopLevelRenderWidgetHostView());
-   if (!root_view || !frame->GetView())
+   if (!root_view || !frame->GetView()) {
      return;
-   // Convert to screen coordinates from window coordinates by adding the
+   }

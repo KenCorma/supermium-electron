@@ -49,7 +49,6 @@ class BrowserWindow : public BaseWindow,
   void WebContentsDestroyed() override;
 
   // ExtendedWebContentsObserver:
-  void OnCloseContents() override;
   void OnSetContentBounds(const gfx::Rect& rect) override;
   void OnActivateContents() override;
   void OnPageTitleUpdated(const std::u16string& title,
@@ -69,8 +68,6 @@ class BrowserWindow : public BaseWindow,
   void Focus() override;
   void Blur() override;
   void SetBackgroundColor(const std::string& color_name) override;
-  void SetBrowserView(
-      absl::optional<gin::Handle<BrowserView>> browser_view) override;
   void OnWindowShow() override;
   void OnWindowHide() override;
 
@@ -79,10 +76,6 @@ class BrowserWindow : public BaseWindow,
   void BlurWebView();
   bool IsWebViewFocused();
   v8::Local<v8::Value> GetWebContents(v8::Isolate* isolate);
-#if BUILDFLAG(IS_WIN)
-  void SetTitleBarOverlay(const gin_helper::Dictionary& options,
-                          gin_helper::Arguments* args);
-#endif
 
  private:
   // Helpers.
@@ -98,6 +91,7 @@ class BrowserWindow : public BaseWindow,
   base::CancelableRepeatingClosure window_unresponsive_closure_;
 
   v8::Global<v8::Value> web_contents_;
+  v8::Global<v8::Value> web_contents_view_;
   base::WeakPtr<api::WebContents> api_web_contents_;
 
   base::WeakPtrFactory<BrowserWindow> weak_factory_{this};

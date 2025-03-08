@@ -1,4 +1,17 @@
 {
+  "action": {
+    "dependencies": ["manifest:action"],
+    "contexts": ["blessed_extension"]
+  },
+  "action.isEnabled": {
+    "channel": "stable"
+  },
+  "action.getBadgeTextColor": {
+    "channel": "stable"
+  },
+  "action.setBadgeTextColor": {
+    "channel": "stable"
+  },
   "tabs": {
     "channel": "stable",
     "extension_types": ["extension"],
@@ -26,6 +39,14 @@
     "contexts": ["blessed_extension", "unblessed_extension", "content_script"],
     "max_manifest_version": 2
   },
+  "extension.lastError": {
+    "contexts": [
+      "blessed_extension",
+      "unblessed_extension",
+      "content_script"
+    ],
+    "max_manifest_version": 2
+  },
   "i18n": {
     "channel": "stable",
     "extension_types": ["extension"],
@@ -51,5 +72,14 @@
     "matches": [
       "chrome://print/*"
     ]
-  }]
+  }],
+  "scripting": {
+    "dependencies": ["permission:scripting"],
+    "contexts": ["blessed_extension"]
+  },
+  "scripting.globalParams": {
+    "channel": "trunk",
+    "dependencies": ["permission:scripting"],
+    "contexts": ["content_script"]
+  }
 }

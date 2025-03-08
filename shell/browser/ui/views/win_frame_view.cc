@@ -15,6 +15,7 @@
 #include "base/win/windows_version.h"
 #include "shell/browser/native_window_views.h"
 #include "shell/browser/ui/views/win_caption_button_container.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/win/hwnd_metrics.h"
 #include "ui/display/win/dpi.h"
 #include "ui/display/win/screen_win.h"
@@ -24,8 +25,6 @@
 #include "ui/views/win/hwnd_util.h"
 
 namespace electron {
-
-const char WinFrameView::kViewClassName[] = "WinFrameView";
 
 WinFrameView::WinFrameView() = default;
 
@@ -38,8 +37,6 @@ void WinFrameView::Init(NativeWindowViews* window, views::Widget* frame) {
   if (window->IsWindowControlsOverlayEnabled()) {
     caption_button_container_ =
         AddChildView(std::make_unique<WinCaptionButtonContainer>(this));
-  } else {
-    caption_button_container_ = nullptr;
   }
 }
 
@@ -83,24 +80,23 @@ views::View* WinFrameView::TargetForRect(views::View* root,
     // Custom system titlebar returns non HTCLIENT value, however event should
     // be handled by the view, not by the system, because there are no system
     // buttons underneath.
-    if (!ShouldCustomDrawSystemTitlebar()) {
+    if (!window()->IsWindowControlsOverlayEnabled())
       return this;
-    }
+
     auto local_point = rect.origin();
     ConvertPointToTarget(parent(), caption_button_container_, &local_point);
-    if (!caption_button_container_->HitTestPoint(local_point)) {
+    if (!caption_button_container_->HitTestPoint(local_point))
       return this;
-    }
   }
 
   return NonClientFrameView::TargetForRect(root, rect);
 }
 
 int WinFrameView::NonClientHitTest(const gfx::Point& point) {
-  if (window_->has_frame())
+  if (window()->has_frame())
     return frame_->client_view()->NonClientHitTest(point);
 
-  if (ShouldCustomDrawSystemTitlebar()) {
+  if (window()->IsWindowControlsOverlayEnabled()) {
     // See if the point is within any of the window controls.
     if (caption_button_container_) {
       gfx::Point local_point = point;
@@ -165,24 +161,16 @@ int WinFrameView::NonClientHitTest(const gfx::Point& point) {
   return FramelessView::NonClientHitTest(point);
 }
 
-const char* WinFrameView::GetClassName() const {
-  return kViewClassName;
-}
-
 bool WinFrameView::IsMaximized() const {
   return frame()->IsMaximized();
 }
 
-bool WinFrameView::ShouldCustomDrawSystemTitlebar() const {
-  return window()->IsWindowControlsOverlayEnabled();
-}
-
-void WinFrameView::Layout() {
+void WinFrameView::Layout(PassKey) {
   LayoutCaptionButtons();
   if (window()->IsWindowControlsOverlayEnabled()) {
     LayoutWindowControlsOverlay();
   }
-  NonClientFrameView::Layout();
+  LayoutSuperclass<NonClientFrameView>(this);
 }
 
 int WinFrameView::FrameTopBorderThickness(bool restored) const {
@@ -202,7 +190,7 @@ int WinFrameView::FrameTopBorderThicknessPx(bool restored) const {
 
   // See comments in BrowserDesktopWindowTreeHostWin::GetClientAreaInsets().
   const bool needs_no_border =
-      (ShouldCustomDrawSystemTitlebar() && frame()->IsMaximized()) ||
+      (window()->IsWindowControlsOverlayEnabled() && frame()->IsMaximized()) ||
       frame()->IsFullscreen();
   if (needs_no_border && !restored)
     return 0;
@@ -250,7 +238,7 @@ void WinFrameView::LayoutCaptionButtons() {
     return;
 
   // Non-custom system titlebar already contains caption buttons.
-  if (!ShouldCustomDrawSystemTitlebar()) {
+  if (!window()->IsWindowControlsOverlayEnabled()) {
     caption_button_container_->SetVisible(false);
     return;
   }
@@ -293,5 +281,8 @@ void WinFrameView::LayoutWindowControlsOverlay() {
   window()->SetWindowControlsOverlayRect(bounding_rect);
   window()->NotifyLayoutWindowControlsOverlay();
 }
+
+BEGIN_METADATA(WinFrameView)
+END_METADATA
 
 }  // namespace electron

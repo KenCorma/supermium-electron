@@ -24,7 +24,7 @@ careful to understand that the term "performance" means different things for
 a Node.js backend than it does for an application running on a client.
 
 This list is provided for your convenience – and is, much like our
-[security checklist][security] – not meant to exhaustive. It is probably possible
+[security checklist][security] – not meant to be exhaustive. It is probably possible
 to build a slow Electron app that follows all the steps outlined below. Electron
 is a powerful development platform that enables you, the developer, to do more
 or less whatever you want. All that freedom means that performance is largely
@@ -83,7 +83,7 @@ is not in fact the leanest or smallest one available.
 
 The reasoning behind this recommendation is best illustrated with a real-world
 example. During the early days of Electron, reliable detection of network
-connectivity was a problem, resulting many apps to use a module that exposed a
+connectivity was a problem, resulting in many apps using a module that exposed a
 simple `isOnline()` method.
 
 That module detected your network connectivity by attempting to reach out to a
@@ -174,7 +174,7 @@ equally fictitious `foo-parser` module. In traditional Node.js development,
 you might write code that eagerly loads dependencies:
 
 ```js title='parser.js' @ts-expect-error=[2]
-const fs = require('fs')
+const fs = require('node:fs')
 const fooParser = require('foo-parser')
 
 class Parser {
@@ -198,7 +198,7 @@ do this work a little later, when `getParsedFiles()` is actually called?
 
 ```js title='parser.js' @ts-expect-error=[20]
 // "fs" is likely already being loaded, so the `require()` call is cheap
-const fs = require('fs')
+const fs = require('node:fs')
 
 class Parser {
   async getFiles () {

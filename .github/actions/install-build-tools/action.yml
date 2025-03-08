@@ -1,0 +1,11 @@
+name: 'Install Build Tools'
+description: 'Installs an exact SHA of build tools'
+runs:
+  using: "composite"
+  steps:
+  - name: Install Build Tools
+    shell: bash
+    run: |
+      export BUILD_TOOLS_SHA=d5b87591842be19058e8d75d2c5b7f1fabe9f450
+      npm i -g @electron/build-tools
+      e auto-update disable

@@ -17,6 +17,7 @@
 #include "third_party/skia/include/core/SkImageInfo.h"
 #include "third_party/skia/include/core/SkPixmap.h"
 #include "ui/base/clipboard/clipboard_format_type.h"
+#include "ui/base/clipboard/file_info.h"
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
 #include "ui/gfx/codec/png_codec.h"
 
@@ -137,7 +138,7 @@ void Clipboard::Write(const gin_helper::Dictionary& data,
   }
 
   if (data.Get("html", &html))
-    writer.WriteHTML(html, std::string(), ui::ClipboardContentType::kSanitized);
+    writer.WriteHTML(html, std::string());
 
   if (data.Get("image", &image))
     writer.WriteImage(image.AsBitmap());
@@ -198,14 +199,13 @@ std::u16string Clipboard::ReadHTML(gin_helper::Arguments* args) {
 void Clipboard::WriteHTML(const std::u16string& html,
                           gin_helper::Arguments* args) {
   ui::ScopedClipboardWriter writer(GetClipboardBuffer(args));
-  writer.WriteHTML(html, std::string(), ui::ClipboardContentType::kSanitized);
+  writer.WriteHTML(html, std::string());
 }
 
 v8::Local<v8::Value> Clipboard::ReadBookmark(gin_helper::Arguments* args) {
   std::u16string title;
   std::string url;
-  gin_helper::Dictionary dict =
-      gin_helper::Dictionary::CreateEmpty(args->isolate());
+  auto dict = gin_helper::Dictionary::CreateEmpty(args->isolate());
   ui::Clipboard* clipboard = ui::Clipboard::GetForCurrentThread();
   clipboard->ReadBookmark(/* data_dst = */ nullptr, &title, &url);
   dict.Set("title", title);
@@ -230,7 +230,7 @@ gfx::Image Clipboard::ReadImage(gin_helper::Arguments* args) {
   }
 
   ui::Clipboard* clipboard = ui::Clipboard::GetForCurrentThread();
-  absl::optional<gfx::Image> image;
+  std::optional<gfx::Image> image;
 
   base::RunLoop run_loop(base::RunLoop::Type::kNestableTasksAllowed);
   base::RepeatingClosure callback = run_loop.QuitClosure();
@@ -238,7 +238,7 @@ gfx::Image Clipboard::ReadImage(gin_helper::Arguments* args) {
       GetClipboardBuffer(args),
       /* data_dst = */ nullptr,
       base::BindOnce(
-          [](absl::optional<gfx::Image>* image, base::RepeatingClosure cb,
+          [](std::optional<gfx::Image>* image, base::RepeatingClosure cb,
              const std::vector<uint8_t>& result) {
             SkBitmap bitmap;
             gfx::PNGCodec::Decode(result.data(), result.size(), &bitmap);
@@ -275,6 +275,17 @@ void Clipboard::Clear(gin_helper::Arguments* args) {
   ui::Clipboard::GetForCurrentThread()->Clear(GetClipboardBuffer(args));
 }
 
+// This exists for testing purposes ONLY.
+void Clipboard::WriteFilesForTesting(const std::vector<base::FilePath>& files) {
+  std::vector<ui::FileInfo> file_infos;
+  for (const auto& file : files) {
+    file_infos.emplace_back(ui::FileInfo(ui::FileInfo(file, file.BaseName())));
+  }
+
+  ui::ScopedClipboardWriter writer(ui::ClipboardBuffer::kCopyPaste);
+  writer.WriteFilenames(ui::FileInfosToURIList(file_infos));
+}
+
 }  // namespace electron::api
 
 namespace {
@@ -303,6 +314,8 @@ void Initialize(v8::Local<v8::Object> exports,
   dict.SetMethod("writeFindText", &electron::api::Clipboard::WriteFindText);
   dict.SetMethod("readBuffer", &electron::api::Clipboard::ReadBuffer);
   dict.SetMethod("writeBuffer", &electron::api::Clipboard::WriteBuffer);
+  dict.SetMethod("_writeFilesForTesting",
+                 &electron::api::Clipboard::WriteFilesForTesting);
   dict.SetMethod("clear", &electron::api::Clipboard::Clear);
 }
 

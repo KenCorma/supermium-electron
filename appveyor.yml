@@ -29,7 +29,7 @@
 
 version: 1.0.{build}
 build_cloud: electronhq-16-core
-image: e-118.0.5949.0
+image: e-123.0.6312.5
 environment:
   GIT_CACHE_PATH: C:\Users\appveyor\libcc_cache
   ELECTRON_OUT_DIR: Default
@@ -37,10 +37,9 @@ environment:
   ELECTRON_ALSO_LOG_TO_STDERR: 1
   MOCHA_REPORTER: mocha-multi-reporters
   MOCHA_MULTI_REPORTERS: "@marshallofsound/mocha-appveyor-reporter, tap"
-  GOMA_FALLBACK_ON_AUTH_FAILURE: true
   DEPOT_TOOLS_WIN_TOOLCHAIN: 1
   DEPOT_TOOLS_WIN_TOOLCHAIN_BASE_URL: "https://dev-cdn.electronjs.org/windows-toolchains/_"
-  GYP_MSVS_HASH_27370823e7: 28622d16b1
+  GYP_MSVS_HASH_7393122652: 3ba76c5c20
   PYTHONIOENCODING: UTF-8
 
   matrix:
@@ -94,36 +93,36 @@ for:
       - git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
       - ps: New-Item -Name depot_tools\.disable_auto_update -ItemType File
       - depot_tools\bootstrap\win_tools.bat
+      - ps: |
+          Set-Content -Path $pwd\depot_tools\build_telemetry.cfg -Value '{"user": "info@electronjs.org", "status": "opt-out", "countdown": 10, "version": 1}'
       - ps: $env:PATH="$pwd\depot_tools;$env:PATH"
       - ps: >-
           if (Test-Path -Path "$pwd\src\electron") {
             Remove-Item -Recurse -Force $pwd\src\electron
           }
-      - ps: >-
-          if (Test-Path 'env:RAW_GOMA_AUTH') {
-            $env:GOMA_OAUTH2_CONFIG_FILE = "$pwd\.goma_oauth2_config"
-            $env:RAW_GOMA_AUTH | Set-Content $env:GOMA_OAUTH2_CONFIG_FILE
-          }
       - git clone https://github.com/electron/build-tools.git
       - cd build-tools
-      - npm install
+      - npx yarn --ignore-engines
       - mkdir third_party
       - ps: >-
-          node -e "require('./src/utils/goma.js').downloadAndPrepare({ gomaOneForAll: true })"
-      - ps: $env:GN_GOMA_FILE = node -e "console.log(require('./src/utils/goma.js').gnFilePath)"
-      - ps: $env:LOCAL_GOMA_DIR = node -e "console.log(require('./src/utils/goma.js').dir)"
-      - cd ..\..
-      - ps: .\src\electron\script\start-goma.ps1 -gomaDir $env:LOCAL_GOMA_DIR
+          node -e "require('./src/utils/reclient.js').downloadAndPrepare({})"
+      - ps: $env:RECLIENT_HELPER = node -p "require('./src/utils/reclient.js').helperPath({})"
       - ps: >-
-          if (Test-Path 'env:RAW_GOMA_AUTH') {
-            $goma_login = python $env:LOCAL_GOMA_DIR\goma_auth.py info
-            if ($goma_login -eq 'Login as Fermi Planck') {
-              Write-warning "Goma authentication is correct";
-            } else {
-              Write-warning "WARNING!!!!!! Goma authentication is incorrect; please update Goma auth token.";
-              $host.SetShouldExit(1)
-            }
+          & $env:RECLIENT_HELPER login
+      - ps: >-
+          $env:RBE_service = node -e "console.log(require('./src/utils/reclient.js').serviceAddress)"
+      - ps: >-
+          $env:RBE_experimental_credentials_helper = $env:RECLIENT_HELPER
+      - ps: >-
+          $env:RBE_experimental_credentials_helper_args = "print"
+      - ps: >-
+          if ($env:ELECTRON_RBE_JWT -eq '') {
+            $env:RBE_fail_early_min_action_count = "0"
+            $env:RBE_fail_early_min_fallback_ratio = "0"
+            $env:RBE_exec_strategy = "local"
+            $env:RBE_remote_update_cache= "false"
           }
+      - cd ..\..
       - ps: $env:CHROMIUM_BUILDTOOLS_PATH="$pwd\src\buildtools"
       - ps: >-
           if ($env:GN_CONFIG -ne 'release') {
@@ -145,28 +144,26 @@ for:
       - cd src
       - ps: $env:PATH="$pwd\third_party\ninja;$env:PATH"
       - set BUILD_CONFIG_PATH=//electron/build/args/%GN_CONFIG%.gn
-      - gn gen out/Default "--args=import(\"%BUILD_CONFIG_PATH%\") import(\"%GN_GOMA_FILE%\") %GN_EXTRA_ARGS% "
+      - gn gen out/Default "--args=import(\"%BUILD_CONFIG_PATH%\") use_remoteexec=true %GN_EXTRA_ARGS% "
       - gn check out/Default //electron:electron_lib
       - gn check out/Default //electron:electron_app
       - gn check out/Default //electron/shell/common/api:mojo
-      - if DEFINED GN_GOMA_FILE (ninja -j 300 -C out/Default electron:electron_app) else (ninja -C out/Default electron:electron_app)
+      - if DEFINED ELECTRON_RBE_JWT (autoninja -j 300 -C out/Default electron:electron_app) else (autoninja -C out/Default electron:electron_app)
       - if "%GN_CONFIG%"=="testing" ( python C:\depot_tools\post_build_ninja_summary.py -C out\Default )
-      - gn gen out/ffmpeg "--args=import(\"//electron/build/args/ffmpeg.gn\") %GN_EXTRA_ARGS%"
-      - ninja -C out/ffmpeg electron:electron_ffmpeg_zip
-      - ninja -C out/Default electron:electron_dist_zip
-      - ninja -C out/Default shell_browser_ui_unittests
+      - gn gen out/ffmpeg "--args=import(\"//electron/build/args/ffmpeg.gn\") use_remoteexec=true %GN_EXTRA_ARGS%"
+      - autoninja -C out/ffmpeg electron:electron_ffmpeg_zip
+      - autoninja -C out/Default electron:electron_dist_zip
       - gn desc out/Default v8:run_mksnapshot_default args > out/Default/default_mksnapshot_args
       # Remove unused args from mksnapshot_args
       - ps: >-
-          Get-Content out/Default/default_mksnapshot_args | Where-Object { -not $_.Contains('--turbo-profiling-input') -And -not $_.Contains('builtins-pgo') } | Set-Content out/Default/mksnapshot_args
-      - ninja -C out/Default electron:electron_mksnapshot_zip
+          Get-Content out/Default/default_mksnapshot_args | Where-Object { -not $_.Contains('--turbo-profiling-input') -And -not $_.Contains('builtins-pgo') -And -not $_.Contains('The gn arg use_goma=true') } | Set-Content out/Default/mksnapshot_args
+      - autoninja -C out/Default electron:electron_mksnapshot_zip
       - cd out\Default
       - 7z a mksnapshot.zip mksnapshot_args gen\v8\embedded.S
       - cd ..\..
-      - ninja -C out/Default electron:hunspell_dictionaries_zip
-      - ninja -C out/Default electron:electron_chromedriver_zip
-      - ninja -C out/Default electron:node_headers
-      - python %LOCAL_GOMA_DIR%\goma_ctl.py stat
+      - autoninja -C out/Default electron:hunspell_dictionaries_zip
+      - autoninja -C out/Default electron:electron_chromedriver_zip
+      - autoninja -C out/Default electron:node_headers
       - ps: >-
           Get-CimInstance -Namespace root\cimv2 -Class Win32_product | Select vendor, description, @{l='install_location';e='InstallLocation'}, @{l='install_date';e='InstallDate'}, @{l='install_date_2';e='InstallDate2'}, caption, version, name, @{l='sku_number';e='SKUNumber'} | ConvertTo-Json | Out-File -Encoding utf8 -FilePath .\installed_software.json
       - python3 electron/build/profile_toolchain.py --output-json=out/Default/windows_toolchain_profile.json
@@ -175,8 +172,8 @@ for:
           if ($env:GN_CONFIG -eq 'release') {
             # Needed for msdia140.dll on 64-bit windows
             $env:Path += ";$pwd\third_party\llvm-build\Release+Asserts\bin"
-            ninja -C out/Default electron:electron_symbols
           }
+      - if "%GN_CONFIG%"=="release" ( autoninja -C out/Default electron:electron_symbols )
       - ps: >-
           if ($env:GN_CONFIG -eq 'release') {
             python3 electron\script\zip-symbols.py
@@ -186,14 +183,19 @@ for:
             # built on CI.
             7z a pdb.zip out\Default\*.pdb
           }
-      - python3 electron/script/zip_manifests/check-zip-manifest.py out/Default/dist.zip electron/script/zip_manifests/dist_zip.win.%TARGET_ARCH%.manifest
+      - ps: |
+          $manifest_file = "electron/script/zip_manifests/dist_zip.win.$env:TARGET_ARCH.manifest"
+          python3 electron/script/zip_manifests/check-zip-manifest.py out/Default/dist.zip $manifest_file
+          if ($LASTEXITCODE -ne 0) {
+            throw "Zip contains files not listed in the manifest $manifest_file"
+          }
       - ps: |
           cd C:\projects\src
           $missing_artifacts = $false
           if ($env:SHOULD_SKIP_ARTIFACT_VALIDATION -eq 'true') {
             Write-warning "Skipping artifact validation for doc-only $env:APPVEYOR_PROJECT_NAME"
           } else {
-            $artifacts_to_validate = 'dist.zip','windows_toolchain_profile.json','shell_browser_ui_unittests.exe','chromedriver.zip','ffmpeg.zip','node_headers.zip','mksnapshot.zip','electron.lib','hunspell_dictionaries.zip'
+            $artifacts_to_validate = 'dist.zip','windows_toolchain_profile.json','chromedriver.zip','ffmpeg.zip','node_headers.zip','mksnapshot.zip','electron.lib','hunspell_dictionaries.zip'
             foreach($artifact_name in $artifacts_to_validate) {
               if ($artifact_name -eq 'ffmpeg.zip') {
                 $artifact_file = "out\ffmpeg\ffmpeg.zip"
@@ -231,7 +233,6 @@ for:
       - cd C:\projects\src
       - if exist out\Default\windows_toolchain_profile.json ( appveyor-retry appveyor PushArtifact out\Default\windows_toolchain_profile.json )
       - if exist out\Default\dist.zip (appveyor-retry appveyor PushArtifact out\Default\dist.zip)
-      - if exist out\Default\shell_browser_ui_unittests.exe (appveyor-retry appveyor PushArtifact out\Default\shell_browser_ui_unittests.exe)
       - if exist out\Default\chromedriver.zip (appveyor-retry appveyor PushArtifact out\Default\chromedriver.zip)
       - if exist out\ffmpeg\ffmpeg.zip (appveyor-retry appveyor PushArtifact out\ffmpeg\ffmpeg.zip)
       - if exist node_headers.zip (appveyor-retry appveyor PushArtifact node_headers.zip)
@@ -268,12 +269,12 @@ for:
           # Download build artifacts
           $apiUrl = 'https://ci.appveyor.com/api'
           $build_info = Invoke-RestMethod -Method Get -Uri "$apiUrl/projects/$env:APPVEYOR_ACCOUNT_NAME/$env:APPVEYOR_PROJECT_SLUG/builds/$env:APPVEYOR_BUILD_ID"
-          $artifacts_to_download = @('dist.zip','shell_browser_ui_unittests.exe','chromedriver.zip','ffmpeg.zip','node_headers.zip','mksnapshot.zip','electron.lib')
+          $artifacts_to_download = @('dist.zip','chromedriver.zip','ffmpeg.zip','node_headers.zip','mksnapshot.zip','electron.lib')
           foreach ($job in $build_info.build.jobs) {
             if ($job.name -eq "Build") {
               $jobId = $job.jobId
               foreach($artifact_name in $artifacts_to_download) {
-                if ($artifact_name -eq 'shell_browser_ui_unittests.exe' -Or $artifact_name -eq 'electron.lib') {
+                if ($artifact_name -eq 'electron.lib') {
                   $outfile = "src\out\Default\$artifact_name"
                 } else {
                   $outfile = $artifact_name
@@ -307,7 +308,6 @@ for:
             $env:npm_config_arch = "ia32"
           }
       - echo Running main test suite & node script/yarn test -- --trace-uncaught --runners=main --enable-logging=file --log-file=%cd%\electron.log
-      - echo Running native test suite & node script/yarn test -- --trace-uncaught --runners=native --enable-logging=file --log-file=%cd%\electron.log
       - cd ..
       - echo Verifying non proprietary ffmpeg & python electron\script\verify-ffmpeg.py --build-dir out\Default --source-root %cd% --ffmpeg-path out\ffmpeg
       - echo "About to verify mksnapshot"

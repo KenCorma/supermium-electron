@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-from __future__ import print_function
 import ast
 import os
 import pprint
 import re
 import subprocess
 import sys
+from lib.config import get_target_arch
 
 ELECTRON_DIR = os.path.abspath(os.path.join(__file__, '..', '..'))
 NODE_DIR = os.path.join(ELECTRON_DIR, '..', 'third_party', 'electron_node')

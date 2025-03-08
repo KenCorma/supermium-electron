@@ -4,9 +4,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as util from 'node:util';
 import { getRemoteContext, ifdescribe, ifit, itremote, useRemoteContext } from './lib/spec-helpers';
+import { copyMacOSFixtureApp, getCodesignIdentity, shouldRunCodesignTests, signApp, spawn } from './lib/codesign-helpers';
 import { webContents } from 'electron/main';
 import { EventEmitter } from 'node:stream';
 import { once } from 'node:events';
+import { withTempDirectory } from './lib/fs-helpers';
 
 const mainFixturesPath = path.resolve(__dirname, 'fixtures');
 
@@ -21,6 +23,12 @@ describe('node feature', () => {
         child.send('message');
         const [msg] = await message;
         expect(msg).to.equal('message');
+      });
+
+      it('Has its module searth paths restricted', async () => {
+        const child = childProcess.fork(path.join(fixtures, 'module', 'module-paths.js'));
+        const [msg] = await once(child, 'message');
+        expect(msg.length).to.equal(2);
       });
     });
   });
@@ -151,6 +159,38 @@ describe('node feature', () => {
     });
   });
 
+  describe('fetch', () => {
+    itremote('works correctly when nodeIntegration is enabled in the renderer', async (fixtures: string) => {
+      const file = require('node:path').join(fixtures, 'hello.txt');
+      expect(() => {
+        fetch('file://' + file);
+      }).to.not.throw();
+
+      expect(() => {
+        const formData = new FormData();
+        formData.append('username', 'Groucho');
+      }).not.to.throw();
+
+      expect(() => {
+        const request = new Request('https://example.com', {
+          method: 'POST',
+          body: JSON.stringify({ foo: 'bar' })
+        });
+        expect(request.method).to.equal('POST');
+      }).not.to.throw();
+
+      expect(() => {
+        const response = new Response('Hello, world!');
+        expect(response.status).to.equal(200);
+      }).not.to.throw();
+
+      expect(() => {
+        const headers = new Headers();
+        headers.append('Content-Type', 'text/xml');
+      }).not.to.throw();
+    }, [fixtures]);
+  });
+
   it('does not hang when using the fs module in the renderer process', async () => {
     const appPath = path.join(mainFixturesPath, 'apps', 'libuv-hang', 'main.js');
     const appProcess = childProcess.spawn(process.execPath, [appPath], {
@@ -195,9 +235,9 @@ describe('node feature', () => {
       emitter.removeAllListeners(eventName);
       emitter.once(eventName, (...args) => {
         emitter.removeAllListeners(eventName);
-        listeners.forEach((listener) => {
+        for (const listener of listeners) {
           emitter.on(eventName, listener);
-        });
+        }
 
         callback(...args);
       });
@@ -659,6 +699,66 @@ describe('node feature', () => {
     });
   });
 
+  ifdescribe(shouldRunCodesignTests)('NODE_OPTIONS in signed app', function () {
+    let identity = '';
+
+    beforeEach(function () {
+      const result = getCodesignIdentity();
+      if (result === null) {
+        this.skip();
+      } else {
+        identity = result;
+      }
+    });
+
+    const script = path.join(fixtures, 'api', 'fork-with-node-options.js');
+    const nodeOptionsWarning = 'Node.js environment variables are disabled because this process is invoked by other apps';
+
+    it('is disabled when invoked by other apps in ELECTRON_RUN_AS_NODE mode', async () => {
+      await withTempDirectory(async (dir) => {
+        const appPath = await copyMacOSFixtureApp(dir);
+        await signApp(appPath, identity);
+        // Invoke Electron by using the system node binary as middle layer, so
+        // the check of NODE_OPTIONS will think the process is started by other
+        // apps.
+        const { code, out } = await spawn('node', [script, path.join(appPath, 'Contents/MacOS/Electron')]);
+        expect(code).to.equal(0);
+        expect(out).to.include(nodeOptionsWarning);
+      });
+    });
+
+    it('is disabled when invoked by alien binary in app bundle in ELECTRON_RUN_AS_NODE mode', async function () {
+      await withTempDirectory(async (dir) => {
+        const appPath = await copyMacOSFixtureApp(dir);
+        await signApp(appPath, identity);
+        // Find system node and copy it to app bundle.
+        const nodePath = process.env.PATH?.split(path.delimiter).find(dir => fs.existsSync(path.join(dir, 'node')));
+        if (!nodePath) {
+          this.skip();
+          return;
+        }
+        const alienBinary = path.join(appPath, 'Contents/MacOS/node');
+        await fs.promises.cp(path.join(nodePath, 'node'), alienBinary, { recursive: true });
+        // Try to execute electron app from the alien node in app bundle.
+        const { code, out } = await spawn(alienBinary, [script, path.join(appPath, 'Contents/MacOS/Electron')]);
+        expect(code).to.equal(0);
+        expect(out).to.include(nodeOptionsWarning);
+      });
+    });
+
+    it('is respected when invoked from self', async () => {
+      await withTempDirectory(async (dir) => {
+        const appPath = await copyMacOSFixtureApp(dir, null);
+        await signApp(appPath, identity);
+        const appExePath = path.join(appPath, 'Contents/MacOS/Electron');
+        const { code, out } = await spawn(appExePath, [script, appExePath]);
+        expect(code).to.equal(1);
+        expect(out).to.not.include(nodeOptionsWarning);
+        expect(out).to.include('NODE_OPTIONS passed to child');
+      });
+    });
+  });
+
   describe('Node.js cli flags', () => {
     let child: childProcess.ChildProcessWithoutNullStreams;
     let exitPromise: Promise<any[]>;
@@ -867,16 +967,23 @@ describe('node feature', () => {
   });
 
   it('performs microtask checkpoint correctly', (done) => {
+    let timer : NodeJS.Timeout;
+    const listener = () => {
+      done(new Error('catch block is delayed to next tick'));
+    };
+
     const f3 = async () => {
       return new Promise((resolve, reject) => {
+        timer = setTimeout(listener);
         reject(new Error('oops'));
       });
     };
 
-    process.once('unhandledRejection', () => done('catch block is delayed to next tick'));
-
     setTimeout(() => {
-      f3().catch(() => done());
+      f3().catch(() => {
+        clearTimeout(timer);
+        done();
+      });
     });
   });
 });

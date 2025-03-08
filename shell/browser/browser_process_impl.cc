@@ -14,6 +14,8 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
+#include "components/os_crypt/async/browser/key_provider.h"
+#include "components/os_crypt/async/browser/os_crypt_async.h"
 #include "components/os_crypt/sync/os_crypt.h"
 #include "components/prefs/in_memory_pref_store.h"
 #include "components/prefs/json_pref_store.h"
@@ -33,8 +35,9 @@
 #include "net/proxy_resolution/proxy_config.h"
 #include "net/proxy_resolution/proxy_config_service.h"
 #include "net/proxy_resolution/proxy_config_with_annotation.h"
-#include "services/device/public/cpp/geolocation/geolocation_manager.h"
+#include "services/device/public/cpp/geolocation/geolocation_system_permission_manager.h"
 #include "services/network/public/cpp/network_switches.h"
+#include "shell/browser/net/resolve_proxy_helper.h"
 #include "shell/common/electron_paths.h"
 #include "shell/common/thread_restrictions.h"
 
@@ -98,9 +101,9 @@ void BrowserProcessImpl::PostEarlyInitialization() {
   OSCrypt::RegisterLocalPrefs(pref_registry.get());
 #endif
 
-  auto pref_store = base::MakeRefCounted<ValueMapPrefStore>();
-  ApplyProxyModeFromCommandLine(pref_store.get());
-  prefs_factory.set_command_line_prefs(std::move(pref_store));
+  in_memory_pref_store_ = base::MakeRefCounted<ValueMapPrefStore>();
+  ApplyProxyModeFromCommandLine(in_memory_pref_store());
+  prefs_factory.set_command_line_prefs(in_memory_pref_store());
 
   // Only use a persistent prefs store when cookie encryption is enabled as that
   // is the only key that needs it
@@ -129,6 +132,7 @@ void BrowserProcessImpl::PreCreateThreads() {
 
 void BrowserProcessImpl::PreMainMessageLoopRun() {
   CreateNetworkQualityObserver();
+  CreateOSCryptAsync();
 }
 
 void BrowserProcessImpl::PostMainMessageLoopRun() {
@@ -301,12 +305,24 @@ UsbSystemTrayIcon* BrowserProcessImpl::usb_system_tray_icon() {
   return nullptr;
 }
 
+os_crypt_async::OSCryptAsync* BrowserProcessImpl::os_crypt_async() {
+  return os_crypt_async_.get();
+}
+
 void BrowserProcessImpl::SetSystemLocale(const std::string& locale) {
   system_locale_ = locale;
 }
 
 const std::string& BrowserProcessImpl::GetSystemLocale() const {
   return system_locale_;
+}
+
+electron::ResolveProxyHelper* BrowserProcessImpl::GetResolveProxyHelper() {
+  if (!resolve_proxy_helper_) {
+    resolve_proxy_helper_ = base::MakeRefCounted<electron::ResolveProxyHelper>(
+        nullptr /* browser_context */);
+  }
+  return resolve_proxy_helper_.get();
 }
 
 #if BUILDFLAG(IS_LINUX)
@@ -332,10 +348,6 @@ void BrowserProcessImpl::SetLinuxStorageBackend(
       NOTREACHED();
       break;
   }
-}
-
-const std::string& BrowserProcessImpl::GetLinuxStorageBackend() const {
-  return selected_linux_storage_backend_;
 }
 #endif  // BUILDFLAG(IS_LINUX)
 
@@ -374,4 +386,19 @@ void BrowserProcessImpl::CreateNetworkQualityObserver() {
   network_quality_observer_ =
       content::CreateNetworkQualityObserver(GetNetworkQualityTracker());
   DCHECK(network_quality_observer_);
+}
+
+void BrowserProcessImpl::CreateOSCryptAsync() {
+  // source: https://chromium-review.googlesource.com/c/chromium/src/+/4455776
+
+  // For now, initialize OSCryptAsync with no providers. This delegates all
+  // encryption operations to OSCrypt.
+  // TODO(crbug.com/1373092): Add providers behind features, as support for them
+  // is added.
+  os_crypt_async_ = std::make_unique<os_crypt_async::OSCryptAsync>(
+      std::vector<
+          std::pair<size_t, std::unique_ptr<os_crypt_async::KeyProvider>>>());
+
+  // Trigger async initialization of OSCrypt key providers.
+  std::ignore = os_crypt_async_->GetInstance(base::DoNothing());
 }

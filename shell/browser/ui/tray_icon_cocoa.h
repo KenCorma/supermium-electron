@@ -14,10 +14,6 @@
 @class ElectronMenuController;
 @class StatusItemView;
 
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
-
 namespace electron {
 
 class TrayIconCocoa : public TrayIcon {
@@ -38,6 +34,10 @@ class TrayIconCocoa : public TrayIcon {
   void CloseContextMenu() override;
   void SetContextMenu(raw_ptr<ElectronMenuModel> menu_model) override;
   gfx::Rect GetBounds() override;
+
+  base::WeakPtr<TrayIconCocoa> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
 
  private:
   // Electron custom view for NSStatusItem.

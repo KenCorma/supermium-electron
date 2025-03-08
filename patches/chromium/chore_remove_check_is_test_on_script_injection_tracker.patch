@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Kleinschmidt <jkleinsc@electronjs.org>
+Date: Mon, 30 Oct 2023 20:56:45 -0400
+Subject: chore: remove CHECK_IS_TEST on script injection tracker
+
+https://chromium-review.googlesource.com/c/chromium/src/+/4950530 added
+a check for test when the UserScriptManager is not available.  In
+Electron when a session is non persistent we do not initialize the
+ExtensionSystem, so this check is not relevant for Electron.
+
+diff --git a/extensions/browser/script_injection_tracker.cc b/extensions/browser/script_injection_tracker.cc
+index 90c14e9712497b067d68638d336784d01f2866d9..6f2082daef563b2b4e80b3f4fa3b282b35d14194 100644
+--- a/extensions/browser/script_injection_tracker.cc
++++ b/extensions/browser/script_injection_tracker.cc
+@@ -170,7 +170,6 @@ std::vector<const UserScript*> GetLoadedDynamicScripts(
+   UserScriptManager* manager =
+       ExtensionSystem::Get(process.GetBrowserContext())->user_script_manager();
+   if (!manager) {
+-    CHECK_IS_TEST();
+     return std::vector<const UserScript*>();
+   }
+ 

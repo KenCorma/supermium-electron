@@ -62,9 +62,6 @@ const char kUseContentSize[] = "useContentSize";
 // Whether window zoom should be to page width.
 const char kZoomToPageWidth[] = "zoomToPageWidth";
 
-// Whether always show title text in full screen is enabled.
-const char kFullscreenWindowTitle[] = "fullscreenWindowTitle";
-
 // The requested title bar style for the window
 const char kTitleBarStyle[] = "titleBarStyle";
 
@@ -229,6 +226,9 @@ const char kCORSSchemes[] = "cors-schemes";
 
 // Register schemes as streaming responses.
 const char kStreamingSchemes[] = "streaming-schemes";
+
+// Register schemes as supporting V8 code cache.
+const char kCodeCacheSchemes[] = "code-cache-schemes";
 
 // The browser process app model ID
 const char kAppUserModelId[] = "app-user-model-id";

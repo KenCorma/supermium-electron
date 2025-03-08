@@ -57,112 +57,34 @@
         "id": "Tab",
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer",
-            "minimum": -1,
-            "optional": true,
-            "description": "The ID of the tab. Tab IDs are unique within a browser session. Under some circumstances a tab may not be assigned an ID; for example, when querying foreign tabs using the $(ref:sessions) API, in which case a session ID may be present. Tab ID can also be set to <code>chrome.tabs.TAB_ID_NONE</code> for apps and devtools windows."
-          },
-          "index": {
-            "type": "integer",
-            "minimum": -1,
-            "description": "The zero-based index of the tab within its window."
-          },
-          "groupId": {
-            "type": "integer",
-            "minimum": -1,
-            "description": "The ID of the group that the tab belongs to."
-          },
-          "windowId": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The ID of the window that contains the tab."
-          },
-          "openerTabId": {
-            "type": "integer",
-            "minimum": 0,
-            "optional": true,
-            "description": "The ID of the tab that opened this tab, if any. This property is only present if the opener tab still exists."
-          },
-          "selected": {
-            "type": "boolean",
-            "description": "Whether the tab is selected.",
-            "deprecated": "Please use $(ref:tabs.Tab.highlighted)."
-          },
-          "highlighted": {
-            "type": "boolean",
-            "description": "Whether the tab is highlighted."
-          },
-          "active": {
-            "type": "boolean",
-            "description": "Whether the tab is active in its window. Does not necessarily mean the window is focused."
-          },
-          "pinned": {
-            "type": "boolean",
-            "description": "Whether the tab is pinned."
-          },
-          "audible": {
-            "type": "boolean",
-            "optional": true,
-            "description": "Whether the tab has produced sound over the past couple of seconds (but it might not be heard if also muted). Equivalent to whether the 'speaker audio' indicator is showing."
-          },
-          "discarded": {
-            "type": "boolean",
-            "description": "Whether the tab is discarded. A discarded tab is one whose content has been unloaded from memory, but is still visible in the tab strip. Its content is reloaded the next time it is activated."
-          },
-          "autoDiscardable": {
-            "type": "boolean",
-            "description": "Whether the tab can be discarded automatically by the browser when resources are low."
-          },
-          "mutedInfo": {
-            "$ref": "MutedInfo",
-            "optional": true,
-            "description": "The tab's muted state and the reason for the last state change."
-          },
-          "url": {
-            "type": "string",
-            "optional": true,
-            "description": "The last committed URL of the main frame of the tab. This property is only present if the extension's manifest includes the <code>\"tabs\"</code> permission and may be an empty string if the tab has not yet committed. See also $(ref:Tab.pendingUrl)."
-          },
-          "pendingUrl": {
-            "type": "string",
-            "optional": true,
-            "description": "The URL the tab is navigating to, before it has committed. This property is only present if the extension's manifest includes the <code>\"tabs\"</code> permission and there is a pending navigation."
-          },
-          "title": {
-            "type": "string",
-            "optional": true,
-            "description": "The title of the tab. This property is only present if the extension's manifest includes the <code>\"tabs\"</code> permission."
-          },
-          "favIconUrl": {
-            "type": "string",
-            "optional": true,
-            "description": "The URL of the tab's favicon. This property is only present if the extension's manifest includes the <code>\"tabs\"</code> permission. It may also be an empty string if the tab is loading."
-          },
+          "id": {"type": "integer", "minimum": -1, "optional": true, "description": "The ID of the tab. Tab IDs are unique within a browser session. Under some circumstances a tab may not be assigned an ID; for example, when querying foreign tabs using the $(ref:sessions) API, in which case a session ID may be present. Tab ID can also be set to <code>chrome.tabs.TAB_ID_NONE</code> for apps and devtools windows."},
+          // TODO(kalman): Investigate how this is ending up as -1 (based on window type? a bug?) and whether it should be optional instead.
+          "index": {"type": "integer", "minimum": -1, "description": "The zero-based index of the tab within its window."},
+          "groupId": {"type": "integer", "minimum": -1, "description": "The ID of the group that the tab belongs to."},
+          "windowId": {"type": "integer", "minimum": 0, "description": "The ID of the window that contains the tab."},
+          "openerTabId": {"type": "integer", "minimum": 0, "optional": true, "description": "The ID of the tab that opened this tab, if any. This property is only present if the opener tab still exists."},
+          "selected": {"type": "boolean", "description": "Whether the tab is selected.", "deprecated": "Please use $(ref:tabs.Tab.highlighted)."},
+          "lastAccessed": {"type": "number", "optional": true, "description": "The last time the tab was accessed as the number of milliseconds since epoch."},
+          "highlighted": {"type": "boolean", "description": "Whether the tab is highlighted."},
+          "active": {"type": "boolean", "description": "Whether the tab is active in its window. Does not necessarily mean the window is focused."},
+          "pinned": {"type": "boolean", "description": "Whether the tab is pinned."},
+          "audible": {"type": "boolean", "optional": true, "description": "Whether the tab has produced sound over the past couple of seconds (but it might not be heard if also muted). Equivalent to whether the 'speaker audio' indicator is showing."},
+          "discarded": {"type": "boolean", "description": "Whether the tab is discarded. A discarded tab is one whose content has been unloaded from memory, but is still visible in the tab strip. Its content is reloaded the next time it is activated."},
+          "autoDiscardable":  {"type": "boolean", "description": "Whether the tab can be discarded automatically by the browser when resources are low."},
+          "mutedInfo": {"$ref": "MutedInfo", "optional": true, "description": "The tab's muted state and the reason for the last state change."},
+          "url": {"type": "string", "optional": true, "description": "The last committed URL of the main frame of the tab. This property is only present if the extension's manifest includes the <code>\"tabs\"</code> permission and may be an empty string if the tab has not yet committed. See also $(ref:Tab.pendingUrl)."},
+          "pendingUrl": {"type": "string", "optional": true, "description": "The URL the tab is navigating to, before it has committed. This property is only present if the extension's manifest includes the <code>\"tabs\"</code> permission and there is a pending navigation."},
+          "title": {"type": "string", "optional": true, "description": "The title of the tab. This property is only present if the extension's manifest includes the <code>\"tabs\"</code> permission."},
+          "favIconUrl": {"type": "string", "optional": true, "description": "The URL of the tab's favicon. This property is only present if the extension's manifest includes the <code>\"tabs\"</code> permission. It may also be an empty string if the tab is loading."},
           "status": {
-            "type": "string",
+            "$ref": "TabStatus",
             "optional": true,
-            "description": "Either <em>loading</em> or <em>complete</em>."
+            "description": "The tab's loading status."
           },
-          "incognito": {
-            "type": "boolean",
-            "description": "Whether the tab is in an incognito window."
-          },
-          "width": {
-            "type": "integer",
-            "optional": true,
-            "description": "The width of the tab in pixels."
-          },
-          "height": {
-            "type": "integer",
-            "optional": true,
-            "description": "The height of the tab in pixels."
-          },
-          "sessionId": {
-            "type": "string",
-            "optional": true,
-            "description": "The session ID used to uniquely identify a tab obtained from the $(ref:sessions) API."
-          }
+          "incognito": {"type": "boolean", "description": "Whether the tab is in an incognito window."},
+          "width": {"type": "integer", "optional": true, "description": "The width of the tab in pixels."},
+          "height": {"type": "integer", "optional": true, "description": "The height of the tab in pixels."},
+          "sessionId": {"type": "string", "optional": true, "description": "The session ID used to uniquely identify a tab obtained from the $(ref:sessions) API."}
         }
       },
       {
@@ -704,9 +626,362 @@
         }
       }
     ],
+    // Electron does not yet support tab events -  we define them here because otherwise extensions crash when
+    // they try to listen for them.
     "events": [
       {
+        "name": "onCreated",
+        "deprecated": "chrome.tabs.onCreated is not current supported in Electron",
+        "type": "function",
+        "description": "Fired when a tab is created. Note that the tab's URL and tab group membership may not be set at the time this event is fired, but you can listen to onUpdated events so as to be notified when a URL is set or the tab is added to a tab group.",
+        "parameters": [
+          {
+            "$ref": "Tab",
+            "name": "tab",
+            "description": "Details of the tab that was created."
+          }
+        ]
+      },
+      {
+        "name": "onUpdated",
+        "deprecated": "chrome.tabs.onUpdated is not current supported in Electron",
+        "type": "function",
+        "description": "Fired when a tab is updated.",
+        "parameters": [
+          {
+            "type": "integer",
+            "name": "tabId",
+            "minimum": 0
+          },
+          {
+            "type": "object",
+            "name": "changeInfo",
+            "description": "Lists the changes to the state of the tab that was updated.",
+            "properties": {
+              "status": {
+                "$ref": "TabStatus",
+                "optional": true,
+                "description": "The tab's loading status."
+              },
+              "url": {
+                "type": "string",
+                "optional": true,
+                "description": "The tab's URL if it has changed."
+              },
+              "groupId": {
+                "type": "integer",
+                "optional": true,
+                "minimum": -1,
+                "description": "The tab's new group."
+              },
+              "pinned": {
+                "type": "boolean",
+                "optional": true,
+                "description": "The tab's new pinned state."
+              },
+              "audible": {
+                "type": "boolean",
+                "optional": true,
+                "description": "The tab's new audible state."
+              },
+              "discarded": {
+                "type": "boolean",
+                "optional": true,
+                "description": "The tab's new discarded state."
+              },
+              "autoDiscardable": {
+                "type": "boolean",
+                "optional": true,
+                "description": "The tab's new auto-discardable state."
+              },
+              "mutedInfo": {
+                "$ref": "MutedInfo",
+                "optional": true,
+                "description": "The tab's new muted state and the reason for the change."
+              },
+              "favIconUrl": {
+                "type": "string",
+                "optional": true,
+                "description": "The tab's new favicon URL."
+              },
+              "title": {
+                "type": "string",
+                "optional": true,
+                "description": "The tab's new title."
+              }
+            }
+          },
+          {
+            "$ref": "Tab",
+            "name": "tab",
+            "description": "Gives the state of the tab that was updated."
+          }
+        ]
+      },
+      {
+        "name": "onMoved",
+        "deprecated": "chrome.tabs.onMoved is not current supported in Electron",
+        "type": "function",
+        "description": "Fired when a tab is moved within a window. Only one move event is fired, representing the tab the user directly moved. Move events are not fired for the other tabs that must move in response to the manually-moved tab. This event is not fired when a tab is moved between windows; for details, see $(ref:tabs.onDetached).",
+        "parameters": [
+          {
+            "type": "integer",
+            "name": "tabId",
+            "minimum": 0
+          },
+          {
+            "type": "object",
+            "name": "moveInfo",
+            "properties": {
+              "windowId": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "fromIndex": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "toIndex": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "onSelectionChanged",
+        "deprecated": "chrome.tabs.onSelectionChanged is not current supported in Electron",
+        "type": "function",
+        "description": "Fires when the selected tab in a window changes.",
+        "parameters": [
+          {
+            "type": "integer",
+            "name": "tabId",
+            "minimum": 0,
+            "description": "The ID of the tab that has become active."
+          },
+          {
+            "type": "object",
+            "name": "selectInfo",
+            "properties": {
+              "windowId": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The ID of the window the selected tab changed inside of."
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "onActiveChanged",
+        "deprecated": "chrome.tabs.onActiveChanged is not current supported in Electron",
+        "type": "function",
+        "description": "Fires when the selected tab in a window changes. Note that the tab's URL may not be set at the time this event fired, but you can listen to $(ref:tabs.onUpdated) events so as to be notified when a URL is set.",
+        "parameters": [
+          {
+            "type": "integer",
+            "name": "tabId",
+            "minimum": 0,
+            "description": "The ID of the tab that has become active."
+          },
+          {
+            "type": "object",
+            "name": "selectInfo",
+            "properties": {
+              "windowId": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The ID of the window the selected tab changed inside of."
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "onActivated",
+        "deprecated": "chrome.tabs.onActivated is not current supported in Electron",
+        "type": "function",
+        "description": "Fires when the active tab in a window changes. Note that the tab's URL may not be set at the time this event fired, but you can listen to onUpdated events so as to be notified when a URL is set.",
+        "parameters": [
+          {
+            "type": "object",
+            "name": "activeInfo",
+            "properties": {
+              "tabId": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The ID of the tab that has become active."
+              },
+              "windowId": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The ID of the window the active tab changed inside of."
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "onHighlightChanged",
+        "deprecated": "chrome.tabs.onHighlightChanged is not current supported in Electron",
+        "type": "function",
+        "description": "Fired when the highlighted or selected tabs in a window changes.",
+        "parameters": [
+          {
+            "type": "object",
+            "name": "selectInfo",
+            "properties": {
+              "windowId": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The window whose tabs changed."
+              },
+              "tabIds": {
+                "type": "array",
+                "name": "tabIds",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "All highlighted tabs in the window."
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "onHighlighted",
+        "deprecated": "chrome.tabs.onHighlighted is not current supported in Electron",
+        "type": "function",
+        "description": "Fired when the highlighted or selected tabs in a window changes.",
+        "parameters": [
+          {
+            "type": "object",
+            "name": "highlightInfo",
+            "properties": {
+              "windowId": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The window whose tabs changed."
+              },
+              "tabIds": {
+                "type": "array",
+                "name": "tabIds",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "All highlighted tabs in the window."
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "onDetached",
+        "deprecated": "chrome.tabs.onDetached is not current supported in Electron",
+        "type": "function",
+        "description": "Fired when a tab is detached from a window; for example, because it was moved between windows.",
+        "parameters": [
+          {
+            "type": "integer",
+            "name": "tabId",
+            "minimum": 0
+          },
+          {
+            "type": "object",
+            "name": "detachInfo",
+            "properties": {
+              "oldWindowId": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "oldPosition": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "onAttached",
+        "deprecated": "chrome.tabs.onAttached is not current supported in Electron",
+        "type": "function",
+        "description": "Fired when a tab is attached to a window; for example, because it was moved between windows.",
+        "parameters": [
+          {
+            "type": "integer",
+            "name": "tabId",
+            "minimum": 0
+          },
+          {
+            "type": "object",
+            "name": "attachInfo",
+            "properties": {
+              "newWindowId": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "newPosition": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "onRemoved",
+        "deprecated": "chrome.tabs.onRemoved is not current supported in Electron",
+        "type": "function",
+        "description": "Fired when a tab is closed.",
+        "parameters": [
+          {
+            "type": "integer",
+            "name": "tabId",
+            "minimum": 0
+          },
+          {
+            "type": "object",
+            "name": "removeInfo",
+            "properties": {
+              "windowId": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The window whose tab is closed."
+              },
+              "isWindowClosing": {
+                "type": "boolean",
+                "description": "True when the tab was closed because its parent window was closed."
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "onReplaced",
+        "deprecated": "chrome.tabs.onReplaced is not current supported in Electron",
+        "type": "function",
+        "description": "Fired when a tab is replaced with another tab due to prerendering or instant.",
+        "parameters": [
+          {
+            "type": "integer",
+            "name": "addedTabId",
+            "minimum": 0
+          },
+          {
+            "type": "integer",
+            "name": "removedTabId",
+            "minimum": 0
+          }
+        ]
+      },
+      {
         "name": "onZoomChange",
+        "deprecated": "chrome.tabs.onZoomChange is not current supported in Electron",
         "type": "function",
         "description": "Fired when a tab is zoomed.",
         "parameters": [

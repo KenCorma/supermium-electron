@@ -106,7 +106,7 @@ void UsbChooserController::OnBrowserContextShutdown() {
 }
 
 // Get a list of devices that can be shown in the chooser bubble UI for
-// user to grant permsssion.
+// user to grant permission.
 void UsbChooserController::GotUsbDeviceList(
     std::vector<::device::mojom::UsbDeviceInfoPtr> devices) {
   // Listen to UsbChooserContext for OnDeviceAdded/Removed events after the
@@ -120,6 +120,14 @@ void UsbChooserController::GotUsbDeviceList(
     auto* rfh = content::RenderFrameHost::FromID(render_frame_host_id_);
     v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
     v8::HandleScope scope(isolate);
+
+    // "select-usb-device" should respect |filters|.
+    devices.erase(std::remove_if(devices.begin(), devices.end(),
+                                 [this](const auto& device_info) {
+                                   return !DisplayDevice(*device_info);
+                                 }),
+                  devices.end());
+
     v8::Local<v8::Object> details = gin::DataObjectBuilder(isolate)
                                         .Set("deviceList", devices)
                                         .Set("frame", rfh)

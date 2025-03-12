@@ -81,7 +81,7 @@ export function fetchWithSession (input: RequestInfo, init: (RequestInit & {bypa
     origin,
     credentials,
     cache: req.cache,
-    referrerPolicy: req.referrerPolicy,
+    referrerPolicy: req.referrerPolicy as any,
     redirect: req.redirect
   }));
 

@@ -1,0 +1,247 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Kendal Cormany <kendal.cormany@nexus.io>
+Date: Tue, 11 Mar 2025 18:14:09 -0700
+Subject: ReAdded Winrt hString
+
+
+diff --git a/base/win/core_winrt_util.cc b/base/win/core_winrt_util.cc
+index a344d283df2b373e0601a87e0b09c8c520fc1f14..20c2d893d204cbb22d92c85d10393fbf1f10934e 100644
+--- a/base/win/core_winrt_util.cc
++++ b/base/win/core_winrt_util.cc
+@@ -4,16 +4,60 @@
+ 
+ #include "base/win/core_winrt_util.h"
+ 
++#include "base/threading/scoped_thread_priority.h"
++
++namespace {
++
++FARPROC LoadComBaseFunction(const char* function_name) {
++  static HMODULE const handle = []() {
++    // Mitigate the issues caused by loading DLLs on a background thread
++    // (http://crbug/973868).
++    SCOPED_MAY_LOAD_LIBRARY_AT_BACKGROUND_PRIORITY();
++    return ::LoadLibraryEx(L"combase.dll", nullptr,
++                           LOAD_LIBRARY_SEARCH_SYSTEM32);
++  }();
++  return handle ? ::GetProcAddress(handle, function_name) : nullptr;
++}
++
++decltype(&::RoActivateInstance) GetRoActivateInstanceFunction() {
++  static decltype(&::RoActivateInstance) const function =
++      reinterpret_cast<decltype(&::RoActivateInstance)>(
++          LoadComBaseFunction("RoActivateInstance"));
++  return function;
++}
++
++decltype(&::RoGetActivationFactory) GetRoGetActivationFactoryFunction() {
++  static decltype(&::RoGetActivationFactory) const function =
++      reinterpret_cast<decltype(&::RoGetActivationFactory)>(
++          LoadComBaseFunction("RoGetActivationFactory"));
++  return function;
++}
++
++}  // namespace
++
+ namespace base::win {
+ 
+ HRESULT RoGetActivationFactory(HSTRING class_id,
+                                const IID& iid,
+                                void** out_factory) {
+-  return ::RoGetActivationFactory(class_id, iid, out_factory);
++  auto get_factory_func = GetRoGetActivationFactoryFunction();
++  if (!get_factory_func) {
++    return E_FAIL;
++  }
++  return get_factory_func(class_id, iid, out_factory);
+ }
+ 
+ HRESULT RoActivateInstance(HSTRING class_id, IInspectable** instance) {
+-  return ::RoActivateInstance(class_id, instance);
++  auto activate_instance_func = GetRoActivateInstanceFunction();
++  if (!activate_instance_func) {
++    return E_FAIL;
++  }
++  return activate_instance_func(class_id, instance);
++}
++
++bool ResolveCoreWinRTDelayload() {
++  // TODO(finnur): Add AssertIOAllowed once crbug.com/770193 is fixed.
++  return GetRoActivateInstanceFunction() && GetRoGetActivationFactoryFunction();
+ }
+ 
+-}  // namespace base::win
+\ No newline at end of file
++}  // namespace base::win
+diff --git a/base/win/core_winrt_util.h b/base/win/core_winrt_util.h
+index 23b70f94f1e8e644f0c1386ef82a7ba7827a20a2..014e3ffcc4a4c7cf10c8c9adda3365ec25962a11 100644
+--- a/base/win/core_winrt_util.h
++++ b/base/win/core_winrt_util.h
+@@ -15,23 +15,23 @@
+ 
+ namespace base::win {
+ 
++// Provides access to Core WinRT functions which may not be available on
++// Windows 7. Loads functions dynamically at runtime to prevent library
++// dependencies.
++BASE_EXPORT bool ResolveCoreWinRTDelayload();
+ // The following stubs are provided for when component build is enabled, in
+ // order to avoid the propagation of delay-loading CoreWinRT to other modules.
+-
+ BASE_EXPORT HRESULT RoGetActivationFactory(HSTRING class_id,
+                                            const IID& iid,
+                                            void** out_factory);
+-
+ BASE_EXPORT HRESULT RoActivateInstance(HSTRING class_id,
+                                        IInspectable** instance);
+-
+ // Retrieves an activation factory for the type specified.
+ template <typename InterfaceType, wchar_t const* runtime_class_id>
+ HRESULT GetActivationFactory(InterfaceType** factory) {
+   ScopedHString class_id_hstring = ScopedHString::Create(runtime_class_id);
+   if (!class_id_hstring.is_valid())
+     return E_FAIL;
+-
+   return base::win::RoGetActivationFactory(class_id_hstring.get(),
+                                            IID_PPV_ARGS(factory));
+ }
+diff --git a/base/win/scoped_hstring.cc b/base/win/scoped_hstring.cc
+index 177cfccf2963f66af69270e1b83cd8e798d07a4a..89ad170c68cd34c1f3487616b343753adb085b29 100644
+--- a/base/win/scoped_hstring.cc
++++ b/base/win/scoped_hstring.cc
+@@ -28,18 +28,86 @@ void ScopedHStringTraits::Free(HSTRING hstr) {
+ 
+ }  // namespace internal
+ 
++namespace {
++
++  static bool g_load_succeeded = false;
++  
++  FARPROC LoadComBaseFunction(const char* function_name) {
++    static HMODULE const handle =
++        ::LoadLibraryEx(L"combase.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
++    return handle ? ::GetProcAddress(handle, function_name) : nullptr;
++  }
++  
++  decltype(&::WindowsCreateString) GetWindowsCreateString() {
++    static decltype(&::WindowsCreateString) const function =
++        reinterpret_cast<decltype(&::WindowsCreateString)>(
++            LoadComBaseFunction("WindowsCreateString"));
++    return function;
++  }
++  
++  decltype(&::WindowsDeleteString) GetWindowsDeleteString() {
++    static decltype(&::WindowsDeleteString) const function =
++        reinterpret_cast<decltype(&::WindowsDeleteString)>(
++            LoadComBaseFunction("WindowsDeleteString"));
++    return function;
++  }
++  
++  decltype(&::WindowsGetStringRawBuffer) GetWindowsGetStringRawBuffer() {
++    static decltype(&::WindowsGetStringRawBuffer) const function =
++        reinterpret_cast<decltype(&::WindowsGetStringRawBuffer)>(
++            LoadComBaseFunction("WindowsGetStringRawBuffer"));
++    return function;
++  }
++  
++  HRESULT WindowsCreateString(const wchar_t* src,
++                              uint32_t len,
++                              HSTRING* out_hstr) {
++    decltype(&::WindowsCreateString) create_string_func =
++        GetWindowsCreateString();
++    if (!create_string_func)
++      return E_FAIL;
++    return create_string_func(src, len, out_hstr);
++  }
++  /*
++  HRESULT WindowsDeleteString(HSTRING hstr) {
++    decltype(&::WindowsDeleteString) delete_string_func =
++        GetWindowsDeleteString();
++    if (!delete_string_func)
++      return E_FAIL;
++    return delete_string_func(hstr);
++  } */
++  
++  const wchar_t* WindowsGetStringRawBuffer(HSTRING hstr, uint32_t* out_len) {
++    decltype(&::WindowsGetStringRawBuffer) get_string_raw_buffer_func =
++        GetWindowsGetStringRawBuffer();
++    if (!get_string_raw_buffer_func) {
++      *out_len = 0;
++      return nullptr;
++    }
++    return get_string_raw_buffer_func(hstr, out_len);
++  }
++  
++  }  // namespace
++
+ namespace win {
+ 
+-ScopedHString::ScopedHString(HSTRING hstr) : ScopedGeneric(hstr) {}
++  
++
++ScopedHString::ScopedHString(HSTRING hstr) : ScopedGeneric(hstr) {
++  DCHECK(g_load_succeeded);
++}
+ 
+ // static
+ ScopedHString ScopedHString::Create(std::wstring_view str) {
++  DCHECK(g_load_succeeded);
+   HSTRING hstr;
+-  HRESULT hr = ::WindowsCreateString(str.data(),
++  HRESULT hr = base::WindowsCreateString(str.data(),
+                                      checked_cast<UINT32>(str.length()), &hstr);
++  
+   if (SUCCEEDED(hr))
+     return ScopedHString(hstr);
+ 
++
+   if (hr == E_OUTOFMEMORY) {
+     // This size is an approximation. The actual size likely includes
+     // sizeof(HSTRING_HEADER) as well.
+@@ -57,10 +125,22 @@ ScopedHString ScopedHString::Create(std::string_view str) {
+   return Create(UTF8ToWide(str));
+ }
+ 
++bool ScopedHString::ResolveCoreWinRTStringDelayload() {
++    // TODO(finnur): Add AssertIOAllowed once crbug.com/770193 is fixed.
++  
++    static const bool load_succeeded = []() {
++      bool success = GetWindowsCreateString() && GetWindowsDeleteString() &&
++                     GetWindowsGetStringRawBuffer();
++      g_load_succeeded = success;
++      return success;
++    }();
++    return load_succeeded;
++  }
++
+ // static
+ std::wstring_view ScopedHString::Get() const {
+   UINT32 length = 0;
+-  const wchar_t* buffer = ::WindowsGetStringRawBuffer(get(), &length);
++  const wchar_t* buffer = base::WindowsGetStringRawBuffer(get(), &length);
+   return std::wstring_view(buffer, length);
+ }
+ 
+@@ -69,4 +149,6 @@ std::string ScopedHString::GetAsUTF8() const {
+ }
+ 
+ }  // namespace win
+-}  // namespace base
+\ No newline at end of file
++}  // namespace base
++
++
+diff --git a/base/win/scoped_hstring.h b/base/win/scoped_hstring.h
+index 6f578a13e9f1ec7ec91b74d80d9af972715d52a7..a46b20fd38684c8b17208a514414150651edde9d 100644
+--- a/base/win/scoped_hstring.h
++++ b/base/win/scoped_hstring.h
+@@ -62,6 +62,9 @@ class BASE_EXPORT ScopedHString
+   static ScopedHString Create(std::wstring_view str);
+   static ScopedHString Create(std::string_view str);
+ 
++  // Loads all required HSTRING functions, available from Win8 and onwards.
++  [[nodiscard]] static bool ResolveCoreWinRTStringDelayload();
++
+   // Returns a view into the memory buffer managed by the instance. The returned
+   // std::string_view is only valid during the lifetime of this ScopedHString
+   // instance.

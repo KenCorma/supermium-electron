@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Kendal Cormany <kendal.cormany@nexus.io>
+Date: Tue, 11 Mar 2025 18:15:07 -0700
+Subject: Testing Added void Layout Method
+
+
+diff --git a/ui/views/view.cc b/ui/views/view.cc
+index 81109f7679aaef16f3045f61e349af42e7464a03..08d7d351032c6270020c08ea43e14e3bab83a1f0 100644
+--- a/ui/views/view.cc
++++ b/ui/views/view.cc
+@@ -928,6 +928,32 @@ void View::Layout(PassKey) {
+   }
+ }
+ 
++
++void View::Layout() {
++  needs_layout_ = false;
++
++  // If we have a layout manager, let it handle the layout for us.
++  if (HasLayoutManager()) {
++    GetLayoutManager()->Layout(this);
++  }
++
++  // Make sure to propagate layout to any children that haven't received it yet
++  // through the layout manager and need to be laid out. This is needed for the
++  // case when the child requires a layout but its bounds weren't changed by the
++  // layout manager. If there is no layout manager, we just propagate layout
++  // down the hierarchy, so whoever receives the call can take appropriate
++  // action.
++  internal::ScopedChildrenLock lock(this);
++  for (views::View* child : children_) {
++    if (child->needs_layout_ || !HasLayoutManager()) {
++      TRACE_EVENT1("views", "View::LayoutChildren", "class",
++                   child->GetClassName());
++      child->needs_layout_ = false;
++      child->LayoutImmediately();
++    }
++  }
++}
++
+ void View::InvalidateLayout() {
+   if (invalidating_) {
+     return;
+diff --git a/ui/views/view.h b/ui/views/view.h
+index 6cca6e9e7627d8495128d42887b0c950ee85d1d7..0efc38f4816ad88234d98947ac0a8d879513e2dd 100644
+--- a/ui/views/view.h
++++ b/ui/views/view.h
+@@ -817,6 +817,7 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
+   // Layout(); see https://crbug.com/1121681.
+   void DeprecatedLayoutImmediately();
+   virtual void Layout(PassKey);
++  virtual void Layout();
+ 
+   bool needs_layout() const { return needs_layout_; }
+ 
+diff --git a/ui/views/window/non_client_view.cc b/ui/views/window/non_client_view.cc
+index f8867d3aebaf9ffeb82ef4425bf6317c5de39cd9..dabf2c88d0c52580ae613cf5013df3eb4104a487 100644
+--- a/ui/views/window/non_client_view.cc
++++ b/ui/views/window/non_client_view.cc
+@@ -128,6 +128,17 @@ void NonClientFrameView::Layout(PassKey) {
+     client_view->SetClipPath(client_clip);
+ }
+ 
++void NonClientFrameView::Layout() {
++  if (GetLayoutManager())
++  GetLayoutManager()->Layout(this);
++
++views::ClientView* client_view = GetWidget()->client_view();
++client_view->SetBoundsRect(GetBoundsForClientView());
++SkPath client_clip;
++if (GetClientMask(client_view->size(), &client_clip))
++  client_view->SetClipPath(client_clip);
++}
++
+ View::Views NonClientFrameView::GetChildrenInZOrder() {
+   View::Views paint_order = View::GetChildrenInZOrder();
+   views::ClientView* client_view =
+@@ -275,6 +286,21 @@ void NonClientView::Layout(PassKey) {
+     overlay_view_->SetBoundsRect(GetLocalBounds());
+ }
+ 
++void NonClientView::Layout() {
++  // TODO(pkasting): The frame view should have the client view as a child and
++  // lay it out directly + set its clip path.  Done correctly, this should let
++  // us use a FillLayout on this class that holds |frame_view_| and
++  // |overlay_view_|, and eliminate CalculatePreferredSize()/GetMinimumSize()/
++  // GetMaximumSize()/Layout().  The frame view and client view were originally
++  // siblings because "many Views make the assumption they are only inserted
++  // into a View hierarchy once" ( http://codereview.chromium.org/27317 ), but
++  // where that is still the case it should simply be fixed.
++  frame_view_->SetBoundsRect(GetLocalBounds());
++
++  if (overlay_view_)
++    overlay_view_->SetBoundsRect(GetLocalBounds());
++}
++
+ void NonClientView::GetAccessibleNodeData(ui::AXNodeData* node_data) {
+   // TODO(crbug.com/1366294): Should this be pruned from the accessibility tree?
+   node_data->role = ax::mojom::Role::kClient;
+diff --git a/ui/views/window/non_client_view.h b/ui/views/window/non_client_view.h
+index dbb5baeedac092a88ec799cb972694aa082f9f7e..1ae3c9b6f0dbb454df1ab57a3063698b8ed46da3 100644
+--- a/ui/views/window/non_client_view.h
++++ b/ui/views/window/non_client_view.h
+@@ -102,6 +102,7 @@ class VIEWS_EXPORT NonClientFrameView : public View,
+   void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
+   void OnThemeChanged() override;
+   void Layout(PassKey) override;
++  void Layout() override;
+   Views GetChildrenInZOrder() override;
+ 
+   // Inserts the passed client view into this NonClientFrameView. Subclasses can
+@@ -215,6 +216,7 @@ class VIEWS_EXPORT NonClientView : public View, public ViewTargeterDelegate {
+   gfx::Size GetMinimumSize() const override;
+   gfx::Size GetMaximumSize() const override;
+   void Layout(PassKey) override;
++  void Layout() override;
+   void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
+   views::View* GetTooltipHandlerForPoint(const gfx::Point& point) override;
+ 

@@ -139,3 +139,6 @@ cherry-pick-1b9040817119.patch
 cherry-pick-99cafbf4b4b9.patch
 cherry-pick-d9f7652c867c.patch
 build_remove_ent_content_analysis_assert.patch
+re-added_hasaeroglass.patch
+readded_winrt_hstring.patch
+testing_added_void_layout_method.patch

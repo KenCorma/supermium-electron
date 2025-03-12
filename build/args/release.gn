@@ -1,6 +1,9 @@
 import("all.gn")
 is_component_build = false
 is_official_build = true
+enable_pdf_viewer = false
+use_allocator_shim = false
+enable_backup_ref_ptr_support = false
 
 # This may be guarded behind is_chrome_branded alongside
 # proprietary_codecs https://webrtc-review.googlesource.com/c/src/+/36321,

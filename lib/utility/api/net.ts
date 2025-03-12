@@ -1,5 +1,5 @@
-import { IncomingMessage } from 'electron/utility';
-import type { ClientRequestConstructorOptions } from 'electron/utility';
+import { IncomingMessage } from 'electron/main';
+import type { ClientRequestConstructorOptions } from 'electron/main';
 import { ClientRequest } from '@electron/internal/common/api/net-client-request';
 import { fetchWithSession } from '@electron/internal/browser/api/net-fetch';
 

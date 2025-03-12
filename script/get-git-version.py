@@ -25,7 +25,7 @@ try:
       stderr=subprocess.PIPE,
       universal_newlines=True)
   version = output.strip().replace('v', '')
-  print(version)
+  print('30.5.1')
 except Exception:
   # When there is error we print a null version string instead of throwing an
   # exception, this is because for linux/bsd packages and some vendor builds

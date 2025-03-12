@@ -3,6 +3,8 @@ gclient_gn_args_from = 'src'
 vars = {
   'chromium_version':
     '124.0.6367.243',
+  'supremium_tag':
+    'v124-r2',
   'node_version':
     'v20.16.0',
   'nan_version':
@@ -19,7 +21,7 @@ vars = {
   'pyyaml_version': '3.12',
 
   'chromium_git': 'https://chromium.googlesource.com',
-  'electron_git': 'https://github.com/electron',
+  'electron_git': 'https://github.com/win32ss/supermium-electron.git',
   'nodejs_git': 'https://github.com/nodejs',
   'yaml_git': 'https://github.com/yaml',
   'squirrel_git': 'https://github.com/Squirrel',
@@ -79,7 +81,7 @@ vars = {
 
 deps = {
   'src': {
-    'url': (Var("chromium_git")) + '/chromium/src.git@' + (Var("chromium_version")),
+    'url': 'https://github.com/win32ss/supermium.git@' + (Var("supremium_tag")),
     'condition': 'checkout_chromium and process_deps',
   },
   'src/third_party/nan': {

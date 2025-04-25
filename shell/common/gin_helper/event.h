@@ -5,9 +5,13 @@
 #ifndef ELECTRON_SHELL_COMMON_GIN_HELPER_EVENT_H_
 #define ELECTRON_SHELL_COMMON_GIN_HELPER_EVENT_H_
 
-#include "gin/handle.h"
 #include "gin/wrappable.h"
 #include "shell/common/gin_helper/constructible.h"
+
+namespace gin {
+template <typename T>
+class Handle;
+}  // namespace gin
 
 namespace v8 {
 class Isolate;
@@ -19,8 +23,8 @@ class ObjectTemplate;
 
 namespace gin_helper::internal {
 
-class Event : public gin::Wrappable<Event>,
-              public gin_helper::Constructible<Event> {
+class Event final : public gin::Wrappable<Event>,
+                    public gin_helper::Constructible<Event> {
  public:
   // gin_helper::Constructible
   static gin::Handle<Event> New(v8::Isolate* isolate);

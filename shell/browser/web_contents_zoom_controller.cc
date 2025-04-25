@@ -84,7 +84,7 @@ bool WebContentsZoomController::SetZoomLevel(double level) {
   // Do not actually rescale the page in manual mode.
   if (zoom_mode_ == ZOOM_MODE_MANUAL) {
     // If the zoom level hasn't changed, early out to avoid sending an event.
-    if (blink::PageZoomValuesEqual(zoom_level_, level))
+    if (blink::ZoomValuesEqual(zoom_level_, level))
       return true;
 
     double old_zoom_level = zoom_level_;
@@ -186,15 +186,16 @@ void WebContentsZoomController::SetZoomMode(ZoomMode new_mode) {
 
       if (entry) {
         GURL url = content::HostZoomMap::GetURLFromEntry(entry);
-        std::string host = net::GetHostOrSpecFromURL(url);
+        const std::string host = net::GetHostOrSpecFromURL(url);
+        const std::string scheme = url.scheme();
 
-        if (zoom_map->HasZoomLevel(url.scheme(), host)) {
+        if (zoom_map->HasZoomLevel(scheme, host)) {
           // If there are other tabs with the same origin, then set this tab's
           // zoom level to match theirs. The temporary zoom level will be
           // cleared below, but this call will make sure this tab re-draws at
           // the correct zoom level.
           double origin_zoom_level =
-              zoom_map->GetZoomLevelForHostAndScheme(url.scheme(), host);
+              zoom_map->GetZoomLevelForHostAndScheme(scheme, host);
           event_data_->new_zoom_level = origin_zoom_level;
           zoom_map->SetTemporaryZoomLevel(rfh_id, origin_zoom_level);
         } else {
@@ -333,7 +334,7 @@ void WebContentsZoomController::RenderFrameHostChanged(
 void WebContentsZoomController::SetZoomFactorOnNavigationIfNeeded(
     const GURL& url) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  if (blink::PageZoomValuesEqual(default_zoom_factor(), kPageZoomEpsilon))
+  if (blink::ZoomValuesEqual(default_zoom_factor(), kPageZoomEpsilon))
     return;
 
   content::GlobalRenderFrameHostId old_rfh_id_ =
@@ -357,11 +358,11 @@ void WebContentsZoomController::SetZoomFactorOnNavigationIfNeeded(
   std::string host = net::GetHostOrSpecFromURL(url);
   std::string scheme = url.scheme();
   double zoom_factor = default_zoom_factor();
-  double zoom_level = blink::PageZoomFactorToZoomLevel(zoom_factor);
+  double zoom_level = blink::ZoomFactorToZoomLevel(zoom_factor);
   if (host_zoom_map_->HasZoomLevel(scheme, host)) {
     zoom_level = host_zoom_map_->GetZoomLevelForHostAndScheme(scheme, host);
   }
-  if (blink::PageZoomValuesEqual(zoom_level, GetZoomLevel()))
+  if (blink::ZoomValuesEqual(zoom_level, GetZoomLevel()))
     return;
 
   SetZoomLevel(zoom_level);

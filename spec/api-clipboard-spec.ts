@@ -1,8 +1,11 @@
-import { expect } from 'chai';
-import * as path from 'node:path';
-import { Buffer } from 'node:buffer';
-import { ifdescribe, ifit } from './lib/spec-helpers';
 import { clipboard, nativeImage } from 'electron/common';
+
+import { expect } from 'chai';
+
+import { Buffer } from 'node:buffer';
+import * as path from 'node:path';
+
+import { ifdescribe, ifit } from './lib/spec-helpers';
 
 // FIXME(zcbenz): Clipboard tests are failing on WOA.
 ifdescribe(process.platform !== 'win32' || process.arch !== 'arm64')('clipboard module', () => {
@@ -33,10 +36,13 @@ ifdescribe(process.platform !== 'win32' || process.arch !== 'arm64')('clipboard 
 
   describe('clipboard.readHTML()', () => {
     it('returns markup correctly', () => {
-      const text = '<string>Hi</string>';
-      const markup = process.platform === 'darwin' ? "<meta charset='utf-8'><string>Hi</string>" : '<string>Hi</string>';
-      clipboard.writeHTML(text);
-      expect(clipboard.readHTML()).to.equal(markup);
+      let text = '<string>Hi</string>';
+      // CL: https://chromium-review.googlesource.com/c/chromium/src/+/5187335
+      if (process.platform === 'darwin') {
+        text = '<meta charset=\'utf-8\'><string>Hi</string>';
+      }
+      clipboard.writeHTML('<string>Hi</string>');
+      expect(clipboard.readHTML()).to.equal(text);
     });
   });
 
@@ -88,7 +94,11 @@ ifdescribe(process.platform !== 'win32' || process.arch !== 'arm64')('clipboard 
       const rtf = '{\\rtf1\\utf8 text}';
       const p = path.join(fixtures, 'assets', 'logo.png');
       const i = nativeImage.createFromPath(p);
-      const markup = process.platform === 'darwin' ? "<meta charset='utf-8'><b>Hi</b>" : '<b>Hi</b>';
+      let markup = '<b>Hi</b>';
+      // CL: https://chromium-review.googlesource.com/c/chromium/src/+/5187335
+      if (process.platform === 'darwin') {
+        markup = '<meta charset=\'utf-8\'><b>Hi</b>';
+      }
       const bookmark = { title: 'a title', url: 'test' };
       clipboard.write({
         text: 'test',

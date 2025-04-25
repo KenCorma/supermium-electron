@@ -7,8 +7,6 @@
 #include <memory>
 #include <utility>
 
-#include "base/functional/bind.h"
-#include "base/functional/callback.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
@@ -85,7 +83,7 @@ AutofillDriver* AutofillDriverFactory::DriverForFrame(
                 driver.get());
     } else {
       driver_map_.erase(insertion_result.first);
-      DCHECK_EQ(driver_map_.count(render_frame_host), 0u);
+      DCHECK(!driver_map_.contains(render_frame_host));
       return nullptr;
     }
   }

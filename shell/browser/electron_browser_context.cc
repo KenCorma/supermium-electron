@@ -4,19 +4,22 @@
 
 #include "shell/browser/electron_browser_context.h"
 
+#include <algorithm>
 #include <memory>
-
+#include <optional>
 #include <utility>
 
 #include "base/barrier_closure.h"
 #include "base/base_paths.h"
 #include "base/command_line.h"
+#include "base/containers/to_vector.h"
 #include "base/files/file_path.h"
 #include "base/no_destructor.h"
 #include "base/path_service.h"
 #include "base/strings/escape.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
+#include "chrome/browser/predictors/preconnect_manager.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/pref_names.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
@@ -35,6 +38,7 @@
 #include "content/public/browser/shared_cors_origin_access_list.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents_media_capture_id.h"
+#include "gin/arguments.h"
 #include "media/audio/audio_device_description.h"
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/url_loader_factory_builder.h"
@@ -46,10 +50,13 @@
 #include "shell/browser/electron_download_manager_delegate.h"
 #include "shell/browser/electron_permission_manager.h"
 #include "shell/browser/file_system_access/file_system_access_permission_context_factory.h"
+#include "shell/browser/media/media_device_id_salt.h"
 #include "shell/browser/net/resolve_proxy_helper.h"
 #include "shell/browser/protocol_registry.h"
+#include "shell/browser/serial/serial_chooser_context.h"
 #include "shell/browser/special_storage_policy.h"
 #include "shell/browser/ui/inspectable_web_contents.h"
+#include "shell/browser/ui/webui/accessibility_ui.h"
 #include "shell/browser/web_contents_permission_helper.h"
 #include "shell/browser/web_view_manager.h"
 #include "shell/browser/zoom_level_delegate.h"
@@ -57,6 +64,7 @@
 #include "shell/common/electron_constants.h"
 #include "shell/common/electron_paths.h"
 #include "shell/common/gin_converters/frame_converter.h"
+#include "shell/common/gin_helper/dictionary.h"
 #include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/options_switches.h"
 #include "shell/common/thread_restrictions.h"
@@ -123,7 +131,7 @@ media::mojom::CaptureHandlePtr CreateCaptureHandle(
 
   const auto& captured_config = captured->GetCaptureHandleConfig();
   if (!captured_config.all_origins_permitted &&
-      base::ranges::none_of(
+      std::ranges::none_of(
           captured_config.permitted_origins,
           [capturer_origin](const url::Origin& permitted_origin) {
             return capturer_origin.IsSameOriginWith(permitted_origin);
@@ -155,24 +163,24 @@ media::mojom::CaptureHandlePtr CreateCaptureHandle(
 }
 
 // Copied from chrome/browser/media/webrtc/desktop_capture_devices_util.cc.
-absl::optional<int> GetZoomLevel(content::WebContents* capturer,
-                                 const url::Origin& capturer_origin,
-                                 const content::DesktopMediaID& captured_id) {
+std::optional<int> GetZoomLevel(content::WebContents* capturer,
+                                const url::Origin& capturer_origin,
+                                const content::DesktopMediaID& captured_id) {
   content::RenderFrameHost* const captured_rfh =
       content::RenderFrameHost::FromID(
           captured_id.web_contents_id.render_process_id,
           captured_id.web_contents_id.main_render_frame_id);
   if (!captured_rfh || !captured_rfh->IsActive()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   content::WebContents* const captured_wc =
       content::WebContents::FromRenderFrameHost(captured_rfh);
   if (!captured_wc) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
-  double zoom_level = blink::PageZoomLevelToZoomFactor(
+  double zoom_level = blink::ZoomLevelToZoomFactor(
       content::HostZoomMap::GetZoomLevel(captured_wc));
   return std::round(100 * zoom_level);
 }
@@ -241,14 +249,114 @@ std::string MakePartitionName(const std::string& input) {
   return {};
 }
 
+bool DoesDeviceMatch(const base::Value& device,
+                     const base::Value& device_to_compare,
+                     const blink::PermissionType permission_type) {
+  if (permission_type ==
+          static_cast<blink::PermissionType>(
+              WebContentsPermissionHelper::PermissionType::HID) ||
+      permission_type ==
+          static_cast<blink::PermissionType>(
+              WebContentsPermissionHelper::PermissionType::USB)) {
+    if (device.GetDict().FindInt(kDeviceVendorIdKey) !=
+            device_to_compare.GetDict().FindInt(kDeviceVendorIdKey) ||
+        device.GetDict().FindInt(kDeviceProductIdKey) !=
+            device_to_compare.GetDict().FindInt(kDeviceProductIdKey)) {
+      return false;
+    }
+
+    const auto* serial_number =
+        device_to_compare.GetDict().FindString(kDeviceSerialNumberKey);
+    const auto* device_serial_number =
+        device.GetDict().FindString(kDeviceSerialNumberKey);
+
+    if (serial_number && device_serial_number &&
+        *device_serial_number == *serial_number)
+      return true;
+  } else if (permission_type ==
+             static_cast<blink::PermissionType>(
+                 WebContentsPermissionHelper::PermissionType::SERIAL)) {
+#if BUILDFLAG(IS_WIN)
+    const auto* instance_id = device.GetDict().FindString(kDeviceInstanceIdKey);
+    const auto* port_instance_id =
+        device_to_compare.GetDict().FindString(kDeviceInstanceIdKey);
+    if (instance_id && port_instance_id && *instance_id == *port_instance_id)
+      return true;
+#else
+    const auto* serial_number = device.GetDict().FindString(kSerialNumberKey);
+    const auto* port_serial_number =
+        device_to_compare.GetDict().FindString(kSerialNumberKey);
+    if (device.GetDict().FindInt(kVendorIdKey) !=
+            device_to_compare.GetDict().FindInt(kVendorIdKey) ||
+        device.GetDict().FindInt(kProductIdKey) !=
+            device_to_compare.GetDict().FindInt(kProductIdKey) ||
+        (serial_number && port_serial_number &&
+         *port_serial_number != *serial_number)) {
+      return false;
+    }
+
+#if BUILDFLAG(IS_MAC)
+    const auto* usb_driver_key = device.GetDict().FindString(kUsbDriverKey);
+    const auto* port_usb_driver_key =
+        device_to_compare.GetDict().FindString(kUsbDriverKey);
+    if (usb_driver_key && port_usb_driver_key &&
+        *usb_driver_key != *port_usb_driver_key) {
+      return false;
+    }
+#endif  // BUILDFLAG(IS_MAC)
+    return true;
+#endif  // BUILDFLAG(IS_WIN)
+  }
+  return false;
+}
+
+// partition_id => browser_context
+struct PartitionKey {
+  PartitionKey(const std::string_view partition, bool in_memory)
+      : type_{Type::Partition}, location_{partition}, in_memory_{in_memory} {}
+
+  explicit PartitionKey(const base::FilePath& file_path)
+      : type_{Type::Path},
+        location_{file_path.AsUTF8Unsafe()},
+        in_memory_{false} {}
+
+  friend auto operator<=>(const PartitionKey&, const PartitionKey&) = default;
+
+ private:
+  enum class Type { Partition, Path };
+
+  Type type_;
+  std::string location_;
+  bool in_memory_;
+};
+
+[[nodiscard]] auto& ContextMap() {
+  static base::NoDestructor<
+      std::map<PartitionKey, std::unique_ptr<ElectronBrowserContext>>>
+      map;
+  return *map;
+}
+
 }  // namespace
 
 // static
-ElectronBrowserContext::BrowserContextMap&
-ElectronBrowserContext::browser_context_map() {
-  static base::NoDestructor<ElectronBrowserContext::BrowserContextMap>
-      browser_context_map;
-  return *browser_context_map;
+std::vector<ElectronBrowserContext*> ElectronBrowserContext::BrowserContexts() {
+  return base::ToVector(ContextMap(),
+                        [](auto& iter) { return iter.second.get(); });
+}
+
+bool ElectronBrowserContext::IsValidContext(const void* context) {
+  return std::ranges::any_of(ContextMap(), [context](const auto& iter) {
+    return iter.second.get() == context;
+  });
+}
+
+// static
+void ElectronBrowserContext::DestroyAllContexts() {
+  auto& map = ContextMap();
+  // Avoid UAF by destroying the default context last. See ba629e3 for info.
+  const auto extracted = map.extract(PartitionKey{"", false});
+  map.clear();
 }
 
 ElectronBrowserContext::ElectronBrowserContext(
@@ -298,10 +406,10 @@ ElectronBrowserContext::ElectronBrowserContext(
     BrowserContextDependencyManager::GetInstance()
         ->CreateBrowserContextServices(this);
 
-    extension_system_ = static_cast<extensions::ElectronExtensionSystem*>(
+    auto* extension_system = static_cast<extensions::ElectronExtensionSystem*>(
         extensions::ExtensionSystem::Get(this));
-    extension_system_->InitForRegularProfile(true /* extensions_enabled */);
-    extension_system_->FinishInitialization();
+    extension_system->InitForRegularProfile(true /* extensions_enabled */);
+    extension_system->FinishInitialization();
   }
 #endif
 }
@@ -309,6 +417,7 @@ ElectronBrowserContext::ElectronBrowserContext(
 ElectronBrowserContext::~ElectronBrowserContext() {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   NotifyWillBeDestroyed();
+
   // Notify any keyed services of browser context destruction.
   BrowserContextDependencyManager::GetInstance()->DestroyBrowserContextServices(
       this);
@@ -352,6 +461,7 @@ void ElectronBrowserContext::InitPrefs() {
   MediaDeviceIDSalt::RegisterPrefs(registry.get());
   ZoomLevelDelegate::RegisterPrefs(registry.get());
   PrefProxyConfigTrackerImpl::RegisterPrefs(registry.get());
+  ElectronAccessibilityUIMessageHandler::RegisterPrefs(registry.get());
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
   if (!in_memory_)
     extensions::ExtensionPrefs::RegisterProfilePrefs(registry.get());
@@ -384,6 +494,10 @@ void ElectronBrowserContext::InitPrefs() {
     }
   }
 #endif
+
+  // Unique uuid for global shortcuts.
+  registry->RegisterStringPref(electron::kElectronGlobalShortcutsUuid,
+                               std::string());
 }
 
 void ElectronBrowserContext::SetUserAgent(const std::string& user_agent) {
@@ -399,7 +513,7 @@ bool ElectronBrowserContext::IsOffTheRecord() {
 }
 
 std::string ElectronBrowserContext::GetMediaDeviceIDSalt() {
-  if (!media_device_id_salt_.get())
+  if (!media_device_id_salt_)
     media_device_id_salt_ = std::make_unique<MediaDeviceIDSalt>(prefs_.get());
   return media_device_id_salt_->GetSalt();
 }
@@ -410,15 +524,14 @@ ElectronBrowserContext::CreateZoomLevelDelegate(
   if (!IsOffTheRecord()) {
     return std::make_unique<ZoomLevelDelegate>(prefs(), partition_path);
   }
-  return std::unique_ptr<content::ZoomLevelDelegate>();
+  return {};
 }
 
 content::DownloadManagerDelegate*
 ElectronBrowserContext::GetDownloadManagerDelegate() {
-  if (!download_manager_delegate_.get()) {
-    auto* download_manager = this->GetDownloadManager();
+  if (!download_manager_delegate_) {
     download_manager_delegate_ =
-        std::make_unique<ElectronDownloadManagerDelegate>(download_manager);
+        std::make_unique<ElectronDownloadManagerDelegate>(GetDownloadManager());
   }
   return download_manager_delegate_.get();
 }
@@ -436,7 +549,7 @@ ElectronBrowserContext::GetPlatformNotificationService() {
 
 content::PermissionControllerDelegate*
 ElectronBrowserContext::GetPermissionControllerDelegate() {
-  if (!permission_manager_.get())
+  if (!permission_manager_)
     permission_manager_ = std::make_unique<ElectronPermissionManager>();
   return permission_manager_.get();
 }
@@ -451,7 +564,7 @@ std::string ElectronBrowserContext::GetUserAgent() const {
 }
 
 predictors::PreconnectManager* ElectronBrowserContext::GetPreconnectManager() {
-  if (!preconnect_manager_.get()) {
+  if (!preconnect_manager_) {
     preconnect_manager_ =
         std::make_unique<predictors::PreconnectManager>(nullptr, this);
   }
@@ -472,8 +585,9 @@ ElectronBrowserContext::GetURLLoaderFactory() {
       ->WillCreateURLLoaderFactory(
           this, nullptr, -1,
           content::ContentBrowserClient::URLLoaderFactoryType::kNavigation,
-          url::Origin(), std::nullopt, ukm::kInvalidSourceIdObj,
-          factory_builder, &header_client, nullptr, nullptr, nullptr, nullptr);
+          url::Origin(), net::IsolationInfo(), std::nullopt,
+          ukm::kInvalidSourceIdObj, factory_builder, &header_client, nullptr,
+          nullptr, nullptr, nullptr);
 
   network::mojom::URLLoaderFactoryParamsPtr params =
       network::mojom::URLLoaderFactoryParams::New();
@@ -615,8 +729,8 @@ void ElectronBrowserContext::DisplayMediaDeviceChosen(
       auto* web_contents = content::WebContents::FromRenderFrameHost(rfh);
       blink::MediaStreamDevice video_device(
           request.video_type,
-          content::WebContentsMediaCaptureId(rfh->GetProcess()->GetID(),
-                                             rfh->GetRoutingID())
+          content::WebContentsMediaCaptureId(
+              rfh->GetProcess()->GetDeprecatedID(), rfh->GetRoutingID())
               .ToString(),
           base::UTF16ToUTF8(web_contents->GetTitle()));
       video_device.display_media_info = DesktopMediaIDToDisplayMediaInformation(
@@ -656,9 +770,9 @@ void ElectronBrowserContext::DisplayMediaDeviceChosen(
       auto* web_contents = content::WebContents::FromRenderFrameHost(rfh);
       blink::MediaStreamDevice audio_device(
           request.audio_type,
-          content::WebContentsMediaCaptureId(rfh->GetProcess()->GetID(),
-                                             rfh->GetRoutingID(),
-                                             disable_local_echo)
+          content::WebContentsMediaCaptureId(
+              rfh->GetProcess()->GetDeprecatedID(), rfh->GetRoutingID(),
+              disable_local_echo)
               .ToString(),
           "Tab audio");
       audio_device.display_media_info = DesktopMediaIDToDisplayMediaInformation(
@@ -720,7 +834,7 @@ void ElectronBrowserContext::GrantDevicePermission(
 void ElectronBrowserContext::RevokeDevicePermission(
     const url::Origin& origin,
     const base::Value& device,
-    blink::PermissionType permission_type) {
+    const blink::PermissionType permission_type) {
   const auto& current_devices_it = granted_devices_.find(permission_type);
   if (current_devices_it == granted_devices_.end())
     return;
@@ -729,76 +843,10 @@ void ElectronBrowserContext::RevokeDevicePermission(
   if (origin_devices_it == current_devices_it->second.end())
     return;
 
-  for (auto it = origin_devices_it->second.begin();
-       it != origin_devices_it->second.end();) {
-    if (DoesDeviceMatch(device, it->get(), permission_type)) {
-      it = origin_devices_it->second.erase(it);
-    } else {
-      ++it;
-    }
-  }
-}
-
-bool ElectronBrowserContext::DoesDeviceMatch(
-    const base::Value& device,
-    const base::Value* device_to_compare,
-    blink::PermissionType permission_type) {
-  if (permission_type ==
-          static_cast<blink::PermissionType>(
-              WebContentsPermissionHelper::PermissionType::HID) ||
-      permission_type ==
-          static_cast<blink::PermissionType>(
-              WebContentsPermissionHelper::PermissionType::USB)) {
-    if (device.GetDict().FindInt(kDeviceVendorIdKey) !=
-            device_to_compare->GetDict().FindInt(kDeviceVendorIdKey) ||
-        device.GetDict().FindInt(kDeviceProductIdKey) !=
-            device_to_compare->GetDict().FindInt(kDeviceProductIdKey)) {
-      return false;
-    }
-
-    const auto* serial_number =
-        device_to_compare->GetDict().FindString(kDeviceSerialNumberKey);
-    const auto* device_serial_number =
-        device.GetDict().FindString(kDeviceSerialNumberKey);
-
-    if (serial_number && device_serial_number &&
-        *device_serial_number == *serial_number)
-      return true;
-  } else if (permission_type ==
-             static_cast<blink::PermissionType>(
-                 WebContentsPermissionHelper::PermissionType::SERIAL)) {
-#if BUILDFLAG(IS_WIN)
-    const auto* instance_id = device.GetDict().FindString(kDeviceInstanceIdKey);
-    const auto* port_instance_id =
-        device_to_compare->GetDict().FindString(kDeviceInstanceIdKey);
-    if (instance_id && port_instance_id && *instance_id == *port_instance_id)
-      return true;
-#else
-    const auto* serial_number = device.GetDict().FindString(kSerialNumberKey);
-    const auto* port_serial_number =
-        device_to_compare->GetDict().FindString(kSerialNumberKey);
-    if (device.GetDict().FindInt(kVendorIdKey) !=
-            device_to_compare->GetDict().FindInt(kVendorIdKey) ||
-        device.GetDict().FindInt(kProductIdKey) !=
-            device_to_compare->GetDict().FindInt(kProductIdKey) ||
-        (serial_number && port_serial_number &&
-         *port_serial_number != *serial_number)) {
-      return false;
-    }
-
-#if BUILDFLAG(IS_MAC)
-    const auto* usb_driver_key = device.GetDict().FindString(kUsbDriverKey);
-    const auto* port_usb_driver_key =
-        device_to_compare->GetDict().FindString(kUsbDriverKey);
-    if (usb_driver_key && port_usb_driver_key &&
-        *usb_driver_key != *port_usb_driver_key) {
-      return false;
-    }
-#endif  // BUILDFLAG(IS_MAC)
-    return true;
-#endif  // BUILDFLAG(IS_WIN)
-  }
-  return false;
+  std::erase_if(origin_devices_it->second,
+                [&device, &permission_type](auto const& val) {
+                  return DoesDeviceMatch(device, *val, permission_type);
+                });
 }
 
 bool ElectronBrowserContext::CheckDevicePermission(
@@ -814,7 +862,7 @@ bool ElectronBrowserContext::CheckDevicePermission(
     return false;
 
   for (const auto& device_to_compare : origin_devices_it->second) {
-    if (DoesDeviceMatch(device, device_to_compare.get(), permission_type))
+    if (DoesDeviceMatch(device, *device_to_compare, permission_type))
       return true;
   }
 
@@ -826,34 +874,29 @@ ElectronBrowserContext* ElectronBrowserContext::From(
     const std::string& partition,
     bool in_memory,
     base::Value::Dict options) {
-  PartitionKey key(partition, in_memory);
-  ElectronBrowserContext* browser_context = browser_context_map()[key].get();
-  if (browser_context) {
-    return browser_context;
+  auto& context = ContextMap()[PartitionKey(partition, in_memory)];
+  if (!context) {
+    context.reset(new ElectronBrowserContext{std::cref(partition), in_memory,
+                                             std::move(options)});
   }
+  return context.get();
+}
 
-  auto* new_context = new ElectronBrowserContext(std::cref(partition),
-                                                 in_memory, std::move(options));
-  browser_context_map()[key] =
-      std::unique_ptr<ElectronBrowserContext>(new_context);
-  return new_context;
+// static
+ElectronBrowserContext* ElectronBrowserContext::GetDefaultBrowserContext(
+    base::Value::Dict options) {
+  return ElectronBrowserContext::From("", false, std::move(options));
 }
 
 ElectronBrowserContext* ElectronBrowserContext::FromPath(
     const base::FilePath& path,
     base::Value::Dict options) {
-  PartitionKey key(path);
-
-  ElectronBrowserContext* browser_context = browser_context_map()[key].get();
-  if (browser_context) {
-    return browser_context;
+  auto& context = ContextMap()[PartitionKey(path)];
+  if (!context) {
+    context.reset(
+        new ElectronBrowserContext{std::cref(path), false, std::move(options)});
   }
-
-  auto* new_context =
-      new ElectronBrowserContext(std::cref(path), false, std::move(options));
-  browser_context_map()[key] =
-      std::unique_ptr<ElectronBrowserContext>(new_context);
-  return new_context;
+  return context.get();
 }
 
 }  // namespace electron

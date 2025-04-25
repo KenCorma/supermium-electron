@@ -14,7 +14,6 @@
 
 #include "base/apple/scoped_cftyperef.h"
 #include "base/containers/flat_map.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
@@ -25,10 +24,10 @@
 #include "shell/common/color_util.h"
 #include "shell/common/gin_converters/gurl_converter.h"
 #include "shell/common/gin_converters/value_converter.h"
+#include "shell/common/gin_helper/promise.h"
 #include "shell/common/node_includes.h"
 #include "shell/common/process_util.h"
 #include "skia/ext/skia_utils_mac.h"
-#include "ui/native_theme/native_theme.h"
 
 namespace gin {
 
@@ -94,8 +93,8 @@ AVMediaType ParseMediaType(const std::string& media_type) {
 }
 
 std::string ConvertSystemPermission(
-    system_media_permissions::SystemPermission value) {
-  using SystemPermission = system_media_permissions::SystemPermission;
+    system_permission_settings::SystemPermission value) {
+  using SystemPermission = system_permission_settings::SystemPermission;
   switch (value) {
     case SystemPermission::kNotDetermined:
       return "not-determined";
@@ -549,13 +548,13 @@ std::string SystemPreferences::GetMediaAccessStatus(
     const std::string& media_type) {
   if (media_type == "camera") {
     return ConvertSystemPermission(
-        system_media_permissions::CheckSystemVideoCapturePermission());
+        system_permission_settings::CheckSystemVideoCapturePermission());
   } else if (media_type == "microphone") {
     return ConvertSystemPermission(
-        system_media_permissions::CheckSystemAudioCapturePermission());
+        system_permission_settings::CheckSystemAudioCapturePermission());
   } else if (media_type == "screen") {
     return ConvertSystemPermission(
-        system_media_permissions::CheckSystemScreenCapturePermission());
+        system_permission_settings::CheckSystemScreenCapturePermission());
   } else {
     thrower.ThrowError("Invalid media type");
     return std::string();

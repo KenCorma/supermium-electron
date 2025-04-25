@@ -1,12 +1,15 @@
+import { BrowserWindow, ipcMain } from 'electron/main';
+
 import { expect } from 'chai';
+
+import { once } from 'node:events';
+import * as importedFs from 'node:fs';
 import * as path from 'node:path';
 import * as url from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { BrowserWindow, ipcMain } from 'electron/main';
-import { closeAllWindows } from './lib/window-helpers';
+
 import { getRemoteContext, ifdescribe, ifit, itremote, useRemoteContext } from './lib/spec-helpers';
-import * as importedFs from 'node:fs';
-import { once } from 'node:events';
+import { closeAllWindows } from './lib/window-helpers';
 
 describe('asar package', () => {
   const fixtures = path.join(__dirname, 'fixtures');
@@ -161,6 +164,7 @@ describe('asar package', function () {
 
       fs = require('node:fs')
       path = require('node:path')
+      fixtures = ${JSON.stringify(fixtures)}
       asarDir = ${JSON.stringify(asarDir)}
 
       // This is used instead of util.promisify for some tests to dodge the
@@ -897,6 +901,56 @@ describe('asar package', function () {
         expect(dirs).to.deep.equal(['dir1', 'dir2', 'dir3', 'file1', 'file2', 'file3', 'link1', 'link2', 'ping.js']);
       });
 
+      itremote('supports recursive readdirSync withFileTypes', () => {
+        const dir = path.join(fixtures, 'recursive-asar');
+        const files = fs.readdirSync(dir, { recursive: true, withFileTypes: true });
+
+        expect(files).to.have.length(24);
+
+        for (const file of files) {
+          expect(file).to.be.an.instanceOf(fs.Dirent);
+        }
+
+        const paths = files.map((a: any) => a.name);
+        expect(paths).to.have.members([
+          'a.asar', 'nested', 'test.txt', 'dir1', 'dir2', 'dir3',
+          'file1', 'file2', 'file3', 'link1', 'link2', 'ping.js',
+          'hello.txt', 'file1', 'file2', 'file3', 'link1', 'link2',
+          'file1', 'file2', 'file3', 'file1', 'file2', 'file3'
+        ]);
+      });
+
+      itremote('supports recursive readdirSync', () => {
+        const dir = path.join(fixtures, 'recursive-asar');
+        const files = fs.readdirSync(dir, { recursive: true });
+        expect(files).to.have.members([
+          'a.asar',
+          'nested',
+          'test.txt',
+          path.join('a.asar', 'dir1'),
+          path.join('a.asar', 'dir2'),
+          path.join('a.asar', 'dir3'),
+          path.join('a.asar', 'file1'),
+          path.join('a.asar', 'file2'),
+          path.join('a.asar', 'file3'),
+          path.join('a.asar', 'link1'),
+          path.join('a.asar', 'link2'),
+          path.join('a.asar', 'ping.js'),
+          path.join('nested', 'hello.txt'),
+          path.join('a.asar', 'dir1', 'file1'),
+          path.join('a.asar', 'dir1', 'file2'),
+          path.join('a.asar', 'dir1', 'file3'),
+          path.join('a.asar', 'dir1', 'link1'),
+          path.join('a.asar', 'dir1', 'link2'),
+          path.join('a.asar', 'dir2', 'file1'),
+          path.join('a.asar', 'dir2', 'file2'),
+          path.join('a.asar', 'dir2', 'file3'),
+          path.join('a.asar', 'dir3', 'file1'),
+          path.join('a.asar', 'dir3', 'file2'),
+          path.join('a.asar', 'dir3', 'file3')
+        ]);
+      });
+
       itremote('reads dirs from a normal dir', function () {
         const p = path.join(asarDir, 'a.asar', 'dir1');
         const dirs = fs.readdirSync(p);
@@ -942,6 +996,56 @@ describe('asar package', function () {
         const p = path.join(asarDir, 'a.asar');
         const dirs = await promisify(fs.readdir)(p);
         expect(dirs).to.deep.equal(['dir1', 'dir2', 'dir3', 'file1', 'file2', 'file3', 'link1', 'link2', 'ping.js']);
+      });
+
+      itremote('supports recursive readdirSync', async () => {
+        const dir = path.join(fixtures, 'recursive-asar');
+        const files = await promisify(fs.readdir)(dir, { recursive: true });
+        expect(files).to.have.members([
+          'a.asar',
+          'nested',
+          'test.txt',
+          path.join('a.asar', 'dir1'),
+          path.join('a.asar', 'dir2'),
+          path.join('a.asar', 'dir3'),
+          path.join('a.asar', 'file1'),
+          path.join('a.asar', 'file2'),
+          path.join('a.asar', 'file3'),
+          path.join('a.asar', 'link1'),
+          path.join('a.asar', 'link2'),
+          path.join('a.asar', 'ping.js'),
+          path.join('nested', 'hello.txt'),
+          path.join('a.asar', 'dir1', 'file1'),
+          path.join('a.asar', 'dir1', 'file2'),
+          path.join('a.asar', 'dir1', 'file3'),
+          path.join('a.asar', 'dir1', 'link1'),
+          path.join('a.asar', 'dir1', 'link2'),
+          path.join('a.asar', 'dir2', 'file1'),
+          path.join('a.asar', 'dir2', 'file2'),
+          path.join('a.asar', 'dir2', 'file3'),
+          path.join('a.asar', 'dir3', 'file1'),
+          path.join('a.asar', 'dir3', 'file2'),
+          path.join('a.asar', 'dir3', 'file3')
+        ]);
+      });
+
+      itremote('supports readdir withFileTypes', async () => {
+        const dir = path.join(fixtures, 'recursive-asar');
+        const files = await promisify(fs.readdir)(dir, { recursive: true, withFileTypes: true });
+
+        expect(files).to.have.length(24);
+
+        for (const file of files) {
+          expect(file).to.be.an.instanceOf(fs.Dirent);
+        }
+
+        const paths = files.map((a: any) => a.name);
+        expect(paths).to.have.members([
+          'a.asar', 'nested', 'test.txt', 'dir1', 'dir2', 'dir3',
+          'file1', 'file2', 'file3', 'link1', 'link2', 'ping.js',
+          'hello.txt', 'file1', 'file2', 'file3', 'link1', 'link2',
+          'file1', 'file2', 'file3', 'file1', 'file2', 'file3'
+        ]);
       });
 
       itremote('supports withFileTypes', async () => {
@@ -1006,6 +1110,56 @@ describe('asar package', function () {
         const p = path.join(asarDir, 'a.asar');
         const dirs = await fs.promises.readdir(p);
         expect(dirs).to.deep.equal(['dir1', 'dir2', 'dir3', 'file1', 'file2', 'file3', 'link1', 'link2', 'ping.js']);
+      });
+
+      itremote('supports recursive readdir', async () => {
+        const dir = path.join(fixtures, 'recursive-asar');
+        const files = await fs.promises.readdir(dir, { recursive: true });
+        expect(files).to.have.members([
+          'a.asar',
+          'nested',
+          'test.txt',
+          path.join('a.asar', 'dir1'),
+          path.join('a.asar', 'dir2'),
+          path.join('a.asar', 'dir3'),
+          path.join('a.asar', 'file1'),
+          path.join('a.asar', 'file2'),
+          path.join('a.asar', 'file3'),
+          path.join('a.asar', 'link1'),
+          path.join('a.asar', 'link2'),
+          path.join('a.asar', 'ping.js'),
+          path.join('nested', 'hello.txt'),
+          path.join('a.asar', 'dir1', 'file1'),
+          path.join('a.asar', 'dir1', 'file2'),
+          path.join('a.asar', 'dir1', 'file3'),
+          path.join('a.asar', 'dir1', 'link1'),
+          path.join('a.asar', 'dir1', 'link2'),
+          path.join('a.asar', 'dir2', 'file1'),
+          path.join('a.asar', 'dir2', 'file2'),
+          path.join('a.asar', 'dir2', 'file3'),
+          path.join('a.asar', 'dir3', 'file1'),
+          path.join('a.asar', 'dir3', 'file2'),
+          path.join('a.asar', 'dir3', 'file3')
+        ]);
+      });
+
+      itremote('supports readdir withFileTypes', async () => {
+        const dir = path.join(fixtures, 'recursive-asar');
+        const files = await fs.promises.readdir(dir, { recursive: true, withFileTypes: true });
+
+        expect(files).to.have.length(24);
+
+        for (const file of files) {
+          expect(file).to.be.an.instanceOf(fs.Dirent);
+        }
+
+        const paths = files.map((a: any) => a.name);
+        expect(paths).to.have.members([
+          'a.asar', 'nested', 'test.txt', 'dir1', 'dir2', 'dir3',
+          'file1', 'file2', 'file3', 'link1', 'link2', 'ping.js',
+          'hello.txt', 'file1', 'file2', 'file3', 'link1', 'link2',
+          'file1', 'file2', 'file3', 'file1', 'file2', 'file3'
+        ]);
       });
 
       itremote('supports withFileTypes', async function () {
@@ -1292,30 +1446,6 @@ describe('asar package', function () {
 
     generateSpecs('child_process');
     generateSpecs('node:child_process');
-
-    describe('internalModuleReadJSON', function () {
-      itremote('reads a normal file', function () {
-        const { internalModuleReadJSON } = (process as any).binding('fs');
-        const file1 = path.join(asarDir, 'a.asar', 'file1');
-        const [s1, c1] = internalModuleReadJSON(file1);
-        expect([s1.toString().trim(), c1]).to.eql(['file1', true]);
-
-        const file2 = path.join(asarDir, 'a.asar', 'file2');
-        const [s2, c2] = internalModuleReadJSON(file2);
-        expect([s2.toString().trim(), c2]).to.eql(['file2', true]);
-
-        const file3 = path.join(asarDir, 'a.asar', 'file3');
-        const [s3, c3] = internalModuleReadJSON(file3);
-        expect([s3.toString().trim(), c3]).to.eql(['file3', true]);
-      });
-
-      itremote('reads a normal file with unpacked files', function () {
-        const { internalModuleReadJSON } = (process as any).binding('fs');
-        const p = path.join(asarDir, 'unpack.asar', 'a.txt');
-        const [s, c] = internalModuleReadJSON(p);
-        expect([s.toString().trim(), c]).to.eql(['a', true]);
-      });
-    });
 
     describe('util.promisify', function () {
       itremote('can promisify all fs functions', function () {

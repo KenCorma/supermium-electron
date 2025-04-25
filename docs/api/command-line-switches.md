@@ -38,7 +38,7 @@ Without `*` prefix the URL has to match exactly.
 
 ### --disable-ntlm-v2
 
-Disables NTLM v2 for posix platforms, no effect elsewhere.
+Disables NTLM v2 for POSIX platforms, no effect elsewhere.
 
 ### --disable-http-cache
 
@@ -241,6 +241,13 @@ Force using discrete GPU when there are multiple GPUs available.
 
 Force using integrated GPU when there are multiple GPUs available.
 
+### --xdg-portal-required-version=`version`
+
+Sets the minimum required version of XDG portal implementation to `version`
+in order to use the portal backend for file dialogs on linux. File dialogs
+will fallback to using gtk or kde depending on the desktop environment when
+the required version is unavailable. Current default is set to `3`.
+
 ## Node.js Flags
 
 Electron supports some of the [CLI flags][node-cli] supported by Node.js.
@@ -279,7 +286,7 @@ Aliased to `--debug[=[host:]port`.
 
 Specify ways of the inspector web socket url exposure.
 
-By default inspector websocket url is available in stderr and under /json/list endpoint on http://host:port/json/list.
+By default inspector websocket url is available in stderr and under /json/list endpoint on `http://host:port/json/list`.
 
 ### `--no-deprecation`
 
@@ -305,6 +312,12 @@ Set the default value of the `verbatim` parameter in the Node.js [`dns.lookup()`
 * `verbatim`: sets default `verbatim` `true`.
 
 The default is `verbatim` and `dns.setDefaultResultOrder()` have higher priority than `--dns-result-order`.
+
+### `--diagnostic-dir=directory`
+
+Set the directory to which all Node.js diagnostic output files are written. Defaults to current working directory.
+
+Affects the default output directory of [v8.setHeapSnapshotNearHeapLimit](https://nodejs.org/docs/latest/api/v8.html#v8setheapsnapshotnearheaplimitlimit).
 
 [app]: app.md
 [append-switch]: command-line.md#commandlineappendswitchswitch-value

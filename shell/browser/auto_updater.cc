@@ -4,6 +4,9 @@
 
 #include "shell/browser/auto_updater.h"
 
+#include "build/build_config.h"
+#include "electron/mas.h"
+
 namespace auto_updater {
 
 Delegate* AutoUpdater::delegate_ = nullptr;

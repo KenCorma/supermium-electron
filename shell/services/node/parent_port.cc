@@ -9,11 +9,13 @@
 #include "base/no_destructor.h"
 #include "gin/data_object_builder.h"
 #include "gin/handle.h"
+#include "gin/object_template_builder.h"
 #include "shell/browser/api/message_port.h"
+#include "shell/browser/javascript_environment.h"
 #include "shell/common/gin_helper/dictionary.h"
 #include "shell/common/gin_helper/event_emitter_caller.h"
 #include "shell/common/node_includes.h"
-#include "shell/common/v8_value_serializer.h"
+#include "shell/common/v8_util.h"
 #include "third_party/blink/public/common/messaging/transferable_message_mojom_traits.h"
 
 namespace electron {
@@ -21,8 +23,8 @@ namespace electron {
 gin::WrapperInfo ParentPort::kWrapperInfo = {gin::kEmbedderNativeGin};
 
 ParentPort* ParentPort::GetInstance() {
-  static base::NoDestructor<ParentPort> instance;
-  return instance.get();
+  static ParentPort* instance = new ParentPort();
+  return instance;
 }
 
 ParentPort::ParentPort() = default;

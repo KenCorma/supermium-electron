@@ -7,11 +7,12 @@
 
 #include "shell/browser/file_system_access/file_system_access_permission_context.h"
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "base/functional/callback.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/clock.h"
 #include "base/time/default_clock.h"
@@ -53,20 +54,19 @@ class FileSystemAccessPermissionContext
   // content::FileSystemAccessPermissionContext:
   scoped_refptr<content::FileSystemAccessPermissionGrant>
   GetReadPermissionGrant(const url::Origin& origin,
-                         const base::FilePath& path,
+                         const content::PathInfo& path,
                          HandleType handle_type,
                          UserAction user_action) override;
 
   scoped_refptr<content::FileSystemAccessPermissionGrant>
   GetWritePermissionGrant(const url::Origin& origin,
-                          const base::FilePath& path,
+                          const content::PathInfo& path,
                           HandleType handle_type,
                           UserAction user_action) override;
 
   void ConfirmSensitiveEntryAccess(
       const url::Origin& origin,
-      PathType path_type,
-      const base::FilePath& path,
+      const content::PathInfo& path,
       HandleType handle_type,
       UserAction user_action,
       content::GlobalRenderFrameHostId frame_id,
@@ -77,16 +77,19 @@ class FileSystemAccessPermissionContext
       content::GlobalRenderFrameHostId frame_id,
       base::OnceCallback<void(AfterWriteCheckResult)> callback) override;
 
+  bool IsFileTypeDangerous(const base::FilePath& path,
+                           const url::Origin& origin) override;
+  base::expected<void, std::string> CanShowFilePicker(
+      content::RenderFrameHost* rfh) override;
   bool CanObtainReadPermission(const url::Origin& origin) override;
   bool CanObtainWritePermission(const url::Origin& origin) override;
 
   void SetLastPickedDirectory(const url::Origin& origin,
                               const std::string& id,
-                              const base::FilePath& path,
-                              const PathType type) override;
+                              const content::PathInfo& path) override;
 
-  PathInfo GetLastPickedDirectory(const url::Origin& origin,
-                                  const std::string& id) override;
+  content::PathInfo GetLastPickedDirectory(const url::Origin& origin,
+                                           const std::string& id) override;
 
   base::FilePath GetWellKnownDirectoryPath(
       blink::mojom::WellKnownDirectory directory,
@@ -96,15 +99,15 @@ class FileSystemAccessPermissionContext
       const blink::mojom::FilePickerOptionsPtr& options) override;
 
   void NotifyEntryMoved(const url::Origin& origin,
-                        const base::FilePath& old_path,
-                        const base::FilePath& new_path) override;
+                        const content::PathInfo& old_path,
+                        const content::PathInfo& new_path) override;
 
   void OnFileCreatedFromShowSaveFilePicker(
       const GURL& file_picker_binding_context,
       const storage::FileSystemURL& url) override;
 
   void CheckPathsAgainstEnterprisePolicy(
-      std::vector<PathInfo> entries,
+      std::vector<content::PathInfo> entries,
       content::GlobalRenderFrameHostId frame_id,
       EntriesAllowedByEnterprisePolicyCallback callback) override;
 
@@ -112,11 +115,15 @@ class FileSystemAccessPermissionContext
 
   enum class RequestType { kNewPermission, kRestorePermissions };
 
-  void RevokeGrant(const url::Origin& origin,
-                   const base::FilePath& file_path = base::FilePath());
+  void RevokeActiveGrants(const url::Origin& origin,
+                          const base::FilePath& file_path = base::FilePath());
 
   bool OriginHasReadAccess(const url::Origin& origin);
   bool OriginHasWriteAccess(const url::Origin& origin);
+
+  // Called by FileSystemAccessWebContentsHelper when a top-level frame was
+  // navigated away from `origin` to some other origin.
+  void NavigatedAwayFromOrigin(const url::Origin& origin);
 
   content::BrowserContext* browser_context() const { return browser_context_; }
 
@@ -128,20 +135,21 @@ class FileSystemAccessPermissionContext
 
   void PermissionGrantDestroyed(PermissionGrantImpl* grant);
 
-  void CheckPathAgainstBlocklist(PathType path_type,
-                                 const base::FilePath& path,
+  void CheckPathAgainstBlocklist(const content::PathInfo& path,
                                  HandleType handle_type,
                                  base::OnceCallback<void(bool)> callback);
   void DidCheckPathAgainstBlocklist(const url::Origin& origin,
-                                    const base::FilePath& path,
+                                    const content::PathInfo& path,
                                     HandleType handle_type,
                                     UserAction user_action,
                                     content::GlobalRenderFrameHostId frame_id,
                                     bool should_block);
 
-  void RunRestrictedPathCallback(SensitiveEntryResult result);
+  void RunRestrictedPathCallback(const base::FilePath& file_path,
+                                 SensitiveEntryResult result);
 
-  void OnRestrictedPathResult(gin::Arguments* args);
+  void OnRestrictedPathResult(const base::FilePath& file_path,
+                              gin::Arguments* args);
 
   void MaybeEvictEntries(base::Value::Dict& dict);
 
@@ -165,7 +173,8 @@ class FileSystemAccessPermissionContext
 
   std::map<url::Origin, base::Value::Dict> id_pathinfo_map_;
 
-  base::OnceCallback<void(SensitiveEntryResult)> callback_;
+  std::map<base::FilePath, base::OnceCallback<void(SensitiveEntryResult)>>
+      callback_map_;
 
   base::WeakPtrFactory<FileSystemAccessPermissionContext> weak_factory_{this};
 };

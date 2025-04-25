@@ -19,15 +19,14 @@
 #include "base/path_service.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/icon_manager.h"
 #include "chrome/browser/ui/color/chrome_color_mixers.h"
-#include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/os_crypt/sync/key_storage_config_linux.h"
 #include "components/os_crypt/sync/key_storage_util_linux.h"
 #include "components/os_crypt/sync/os_crypt.h"
+#include "components/password_manager/core/browser/password_manager_switches.h"  // nogncheck
 #include "content/browser/browser_main_loop.h"  // nogncheck
 #include "content/public/browser/browser_child_process_host_delegate.h"
 #include "content/public/browser/browser_child_process_host_iterator.h"
@@ -35,6 +34,7 @@
 #include "content/public/browser/child_process_data.h"
 #include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/device_service.h"
+#include "content/public/browser/download_manager.h"
 #include "content/public/browser/first_party_sets_handler.h"
 #include "content/public/browser/web_ui_controller_factory.h"
 #include "content/public/common/content_features.h"
@@ -42,12 +42,10 @@
 #include "content/public/common/process_type.h"
 #include "content/public/common/result_codes.h"
 #include "electron/buildflags/buildflags.h"
-#include "electron/fuses.h"
 #include "media/base/localized_strings.h"
 #include "services/network/public/cpp/features.h"
 #include "services/tracing/public/cpp/stack_sampling/tracing_sampler_profiler.h"
 #include "shell/app/electron_main_delegate.h"
-#include "shell/browser/api/electron_api_app.h"
 #include "shell/browser/api/electron_api_utility_process.h"
 #include "shell/browser/browser.h"
 #include "shell/browser/browser_process_impl.h"
@@ -69,10 +67,11 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_switches.h"
 #include "ui/color/color_provider_manager.h"
+#include "ui/display/screen.h"
+#include "ui/views/layout/layout_provider.h"
+#include "url/url_util.h"
 
 #if defined(USE_AURA)
-#include "ui/display/display.h"
-#include "ui/display/screen.h"
 #include "ui/views/widget/desktop_aura/desktop_screen.h"
 #include "ui/wm/core/wm_state.h"
 #endif
@@ -135,6 +134,8 @@ class LinuxUiGetterImpl : public ui::LinuxUiGetter {
  public:
   LinuxUiGetterImpl() = default;
   ~LinuxUiGetterImpl() override = default;
+
+  // ui::LinuxUiGetter
   ui::LinuxUiTheme* GetForWindow(aura::Window* window) override {
     return GetForProfile(nullptr);
   }
@@ -162,7 +163,7 @@ std::u16string MediaStringProvider(media::MessageId id) {
       return u"Communications";
 #endif
     default:
-      return std::u16string();
+      return {};
   }
 }
 
@@ -236,7 +237,8 @@ void ElectronBrowserMainParts::PostEarlyInitialization() {
   node_bindings_->Initialize(js_env_->isolate()->GetCurrentContext());
   // Create the global environment.
   node_env_ = node_bindings_->CreateEnvironment(
-      js_env_->isolate()->GetCurrentContext(), js_env_->platform());
+      js_env_->isolate()->GetCurrentContext(), js_env_->platform(),
+      js_env_->max_young_generation_size_in_bytes());
 
   node_env_->set_trace_sync_io(node_env_->options()->trace_sync_io);
 
@@ -309,7 +311,7 @@ int ElectronBrowserMainParts::PreCreateThreads() {
     std::string str;
     if (env->GetVar("LC_ALL", &str))
       lc_all.emplace(std::move(str));
-    env->SetVar("LC_ALL", locale.c_str());
+    env->SetVar("LC_ALL", locale);
   }
 #endif
 
@@ -338,9 +340,6 @@ int ElectronBrowserMainParts::PreCreateThreads() {
       env->UnSetVar("LC_ALL");
   }
 #endif
-
-  // Force MediaCaptureDevicesDispatcher to be created on UI thread.
-  MediaCaptureDevicesDispatcher::GetInstance();
 
   // Force MediaCaptureDevicesDispatcher to be created on UI thread.
   MediaCaptureDevicesDispatcher::GetInstance();
@@ -516,13 +515,14 @@ void ElectronBrowserMainParts::PostCreateMainMessageLoop() {
   std::unique_ptr<os_crypt::Config> config =
       std::make_unique<os_crypt::Config>();
   // Forward to os_crypt the flag to use a specific password store.
-  config->store = command_line.GetSwitchValueASCII(::switches::kPasswordStore);
+  config->store =
+      command_line.GetSwitchValueASCII(password_manager::kPasswordStore);
   config->product_name = app_name;
   config->application_name = app_name;
   // c.f.
   // https://source.chromium.org/chromium/chromium/src/+/main:chrome/common/chrome_switches.cc;l=689;drc=9d82515060b9b75fa941986f5db7390299669ef1
   config->should_use_preference =
-      command_line.HasSwitch(::switches::kEnableEncryptionSelection);
+      command_line.HasSwitch(password_manager::kEnableEncryptionSelection);
   base::PathService::Get(DIR_SESSION_DATA, &config->user_data_path);
 
   bool use_backend = !config->should_use_preference ||
@@ -554,11 +554,9 @@ void ElectronBrowserMainParts::PostMainMessageLoopRun() {
 
   // Shutdown the DownloadManager before destroying Node to prevent
   // DownloadItem callbacks from crashing.
-  for (auto& iter : ElectronBrowserContext::browser_context_map()) {
-    auto* download_manager = iter.second.get()->GetDownloadManager();
-    if (download_manager) {
+  for (auto* browser_context : ElectronBrowserContext::BrowserContexts()) {
+    if (auto* download_manager = browser_context->GetDownloadManager())
       download_manager->Shutdown();
-    }
   }
 
   // Shutdown utility process created with Electron API before
@@ -595,13 +593,10 @@ void ElectronBrowserMainParts::PostMainMessageLoopRun() {
   node_env_->set_trace_sync_io(false);
   js_env_->DestroyMicrotasksRunner();
   node::Stop(node_env_.get(), node::StopFlags::kDoNotTerminateIsolate);
+  node_bindings_->set_uv_env(nullptr);
   node_env_.reset();
 
-  auto default_context_key = ElectronBrowserContext::PartitionKey("", false);
-  std::unique_ptr<ElectronBrowserContext> default_context = std::move(
-      ElectronBrowserContext::browser_context_map()[default_context_key]);
-  ElectronBrowserContext::browser_context_map().clear();
-  default_context.reset();
+  ElectronBrowserContext::DestroyAllContexts();
 
   fake_browser_process_->PostMainMessageLoopRun();
   content::DevToolsAgentHost::StopRemoteDebuggingPipeHandler();

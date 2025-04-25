@@ -6,6 +6,7 @@
 
 #include <utility>
 
+#include "shell/browser/api/electron_api_base_window.h"
 #include "shell/browser/api/ui_event.h"
 #include "shell/browser/javascript_environment.h"
 #include "shell/browser/native_window.h"
@@ -69,6 +70,8 @@ Menu::~Menu() {
   }
 }
 
+namespace {
+
 bool InvokeBoolMethod(const Menu* menu,
                       const char* method,
                       int command_id,
@@ -82,6 +85,8 @@ bool InvokeBoolMethod(const Menu* menu,
   bool ret = false;
   return gin::ConvertFromV8(isolate, val, &ret) ? ret : default_value;
 }
+
+}  // namespace
 
 bool Menu::IsCommandIdChecked(int command_id) const {
   return InvokeBoolMethod(this, "_isCommandIdChecked", command_id);

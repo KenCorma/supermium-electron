@@ -11,15 +11,19 @@
 
 #include "chrome/browser/media/webrtc/desktop_media_list_observer.h"
 #include "chrome/browser/media/webrtc/native_desktop_media_list.h"
-#include "gin/handle.h"
 #include "gin/wrappable.h"
 #include "shell/common/gin_helper/pinnable.h"
 
+namespace gin {
+template <typename T>
+class Handle;
+}  // namespace gin
+
 namespace electron::api {
 
-class DesktopCapturer : public gin::Wrappable<DesktopCapturer>,
-                        public gin_helper::Pinnable<DesktopCapturer>,
-                        public DesktopMediaListObserver {
+class DesktopCapturer final : public gin::Wrappable<DesktopCapturer>,
+                              public gin_helper::Pinnable<DesktopCapturer>,
+                              private DesktopMediaListObserver {
  public:
   struct Source {
     DesktopMediaList::Source media_list_source;
@@ -31,6 +35,8 @@ class DesktopCapturer : public gin::Wrappable<DesktopCapturer>,
   };
 
   static gin::Handle<DesktopCapturer> Create(v8::Isolate* isolate);
+
+  static bool IsDisplayMediaSystemPickerAvailable();
 
   void StartHandling(bool capture_window,
                      bool capture_screen,
@@ -51,6 +57,7 @@ class DesktopCapturer : public gin::Wrappable<DesktopCapturer>,
   explicit DesktopCapturer(v8::Isolate* isolate);
   ~DesktopCapturer() override;
 
+ private:
   // DesktopMediaListObserver:
   void OnSourceAdded(int index) override {}
   void OnSourceRemoved(int index) override {}
@@ -61,7 +68,6 @@ class DesktopCapturer : public gin::Wrappable<DesktopCapturer>,
   void OnDelegatedSourceListSelection() override {}
   void OnDelegatedSourceListDismissed() override {}
 
- private:
   using OnceCallback = base::OnceClosure;
 
   class DesktopListListener : public DesktopMediaListObserver {

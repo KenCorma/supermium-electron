@@ -12,24 +12,19 @@
 
 #include "base/containers/flat_map.h"
 #include "base/task/cancelable_task_tracker.h"
-#include "chrome/browser/icon_manager.h"
 #include "chrome/browser/process_singleton.h"
 #include "content/public/browser/browser_child_process_observer.h"
 #include "content/public/browser/gpu_data_manager_observer.h"
 #include "content/public/browser/render_process_host.h"
 #include "crypto/crypto_buildflags.h"
-#include "gin/handle.h"
+#include "electron/mas.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/completion_repeating_callback.h"
 #include "net/ssl/client_cert_identity.h"
-#include "shell/browser/api/process_metric.h"
 #include "shell/browser/browser.h"
 #include "shell/browser/browser_observer.h"
 #include "shell/browser/electron_browser_client.h"
 #include "shell/browser/event_emitter_mixin.h"
-#include "shell/common/gin_helper/dictionary.h"
-#include "shell/common/gin_helper/error_thrower.h"
-#include "shell/common/gin_helper/promise.h"
 
 #if BUILDFLAG(USE_NSS_CERTS)
 #include "shell/browser/certificate_manager_model.h"
@@ -39,7 +34,19 @@ namespace base {
 class FilePath;
 }
 
+namespace gin {
+template <typename T>
+class Handle;
+}  // namespace gin
+
+namespace gin_helper {
+class Dictionary;
+class ErrorThrower;
+}  // namespace gin_helper
+
 namespace electron {
+
+struct ProcessMetric;
 
 #if BUILDFLAG(IS_WIN)
 enum class JumpListResult : int;
@@ -47,16 +54,13 @@ enum class JumpListResult : int;
 
 namespace api {
 
-class App : public ElectronBrowserClient::Delegate,
-            public gin::Wrappable<App>,
-            public gin_helper::EventEmitterMixin<App>,
-            public BrowserObserver,
-            public content::GpuDataManagerObserver,
-            public content::BrowserChildProcessObserver {
+class App final : public ElectronBrowserClient::Delegate,
+                  public gin::Wrappable<App>,
+                  public gin_helper::EventEmitterMixin<App>,
+                  private BrowserObserver,
+                  private content::GpuDataManagerObserver,
+                  private content::BrowserChildProcessObserver {
  public:
-  using FileIconCallback =
-      base::RepeatingCallback<void(v8::Local<v8::Value>, const gfx::Image&)>;
-
   static gin::Handle<App> Create(v8::Isolate* isolate);
   static App* Get();
 
@@ -132,6 +136,7 @@ class App : public ElectronBrowserClient::Delegate,
       override;
   base::OnceClosure SelectClientCertificate(
       content::BrowserContext* browser_context,
+      int process_id,
       content::WebContents* web_contents,
       net::SSLCertRequestInfo* cert_request_info,
       net::ClientCertIdentityList identities,
@@ -174,11 +179,11 @@ class App : public ElectronBrowserClient::Delegate,
 
   void SetAppPath(const base::FilePath& app_path);
   void ChildProcessLaunched(int process_type,
-                            int pid,
+                            content::ChildProcessId pid,
                             base::ProcessHandle handle,
                             const std::string& service_name = std::string(),
                             const std::string& name = std::string());
-  void ChildProcessDisconnected(int pid);
+  void ChildProcessDisconnected(content::ChildProcessId pid);
 
   void SetAppLogsPath(gin_helper::ErrorThrower thrower,
                       std::optional<base::FilePath> custom_path);
@@ -196,7 +201,7 @@ class App : public ElectronBrowserClient::Delegate,
   std::string GetSystemLocale(gin_helper::ErrorThrower thrower) const;
   void OnSecondInstance(base::CommandLine cmd,
                         const base::FilePath& cwd,
-                        const std::vector<const uint8_t> additional_data);
+                        const std::vector<uint8_t> additional_data);
   bool HasSingleInstanceLock() const;
   bool RequestSingleInstanceLock(gin::Arguments* args);
   void ReleaseSingleInstanceLock();
@@ -263,7 +268,9 @@ class App : public ElectronBrowserClient::Delegate,
   base::FilePath app_path_;
 
   // pid -> electron::ProcessMetric
-  base::flat_map<int, std::unique_ptr<electron::ProcessMetric>> app_metrics_;
+  base::flat_map<content::ChildProcessId,
+                 std::unique_ptr<electron::ProcessMetric>>
+      app_metrics_;
 
   bool disable_hw_acceleration_ = false;
   bool disable_domain_blocking_for_3DAPIs_ = false;

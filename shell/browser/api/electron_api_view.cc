@@ -10,7 +10,9 @@
 #include <string>
 #include <utility>
 
+#include "ash/style/rounded_rect_cutout_path_builder.h"
 #include "gin/data_object_builder.h"
+#include "gin/handle.h"
 #include "gin/wrappable.h"
 #include "shell/browser/javascript_environment.h"
 #include "shell/common/gin_converters/callback_converter.h"
@@ -153,8 +155,9 @@ class JSLayoutManager : public views::LayoutManagerBase {
  public:
   explicit JSLayoutManager(LayoutCallback layout_callback)
       : layout_callback_(std::move(layout_callback)) {}
-  ~JSLayoutManager() override {}
+  ~JSLayoutManager() override = default;
 
+  // views::LayoutManagerBase
   views::ProposedLayout CalculateProposedLayout(
       const views::SizeBounds& size_bounds) const override {
     v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
@@ -178,13 +181,16 @@ View::~View() {
     return;
   view_->RemoveObserver(this);
   if (delete_view_)
-    delete view_;
+    view_.ClearAndDelete();
 }
 
 void View::ReorderChildView(gin::Handle<View> child, size_t index) {
   view_->ReorderChildView(child->view(), index);
 
-  const auto i = base::ranges::find(child_views_, child.ToV8());
+  const auto i =
+      std::ranges::find_if(child_views_, [&](const ChildPair& child_view) {
+        return child_view.first == child->view();
+      });
   DCHECK(i != child_views_.end());
 
   // If |view| is already at the desired position, there's nothing to do.
@@ -228,8 +234,9 @@ void View::AddChildViewAt(gin::Handle<View> child,
     return;
   }
 
-  child_views_.emplace(child_views_.begin() + index,     // index
-                       isolate(), child->GetWrapper());  // v8::Global(args...)
+  child_views_.emplace(child_views_.begin() + index,  // index
+                       child->view(),
+                       v8::Global<v8::Object>(isolate(), child->GetWrapper()));
 #if BUILDFLAG(IS_MAC)
   // Disable the implicit CALayer animations that happen by default when adding
   // or removing sublayers.
@@ -248,15 +255,22 @@ void View::AddChildViewAt(gin::Handle<View> child,
 void View::RemoveChildView(gin::Handle<View> child) {
   if (!view_)
     return;
-  if (!child->view())
-    return;
-  const auto it = base::ranges::find(child_views_, child.ToV8());
+
+  const auto it =
+      std::ranges::find_if(child_views_, [&](const ChildPair& child_view) {
+        return child_view.first == child->view();
+      });
   if (it != child_views_.end()) {
 #if BUILDFLAG(IS_MAC)
     ScopedCAActionDisabler disable_animations;
 #endif
-    view_->RemoveChildView(child->view());
+    // Remove from child_views first so that OnChildViewRemoved doesn't try to
+    // remove it again
     child_views_.erase(it);
+    // It's possible for the child's view to be invalid here
+    // if the child's webContents was closed or destroyed.
+    if (child->view())
+      view_->RemoveChildView(child->view());
   }
 }
 
@@ -266,9 +280,9 @@ void View::SetBounds(const gfx::Rect& bounds) {
   view_->SetBoundsRect(bounds);
 }
 
-gfx::Rect View::GetBounds() {
+gfx::Rect View::GetBounds() const {
   if (!view_)
-    return gfx::Rect();
+    return {};
   return view_->bounds();
 }
 
@@ -323,8 +337,8 @@ std::vector<v8::Local<v8::Value>> View::GetChildren() {
 
   v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
 
-  for (auto& child_view : child_views_)
-    ret.push_back(child_view.Get(isolate));
+  for (auto& [view, global] : child_views_)
+    ret.push_back(global.Get(isolate));
 
   return ret;
 }
@@ -335,19 +349,62 @@ void View::SetBackgroundColor(std::optional<WrappedSkColor> color) {
   view_->SetBackground(color ? views::CreateSolidBackground(*color) : nullptr);
 }
 
+void View::SetBorderRadius(int radius) {
+  border_radius_ = radius;
+  ApplyBorderRadius();
+}
+
+void View::ApplyBorderRadius() {
+  if (!border_radius_.has_value() || !view_)
+    return;
+
+  auto size = view_->bounds().size();
+
+  // Restrict border radius to the constraints set in the path builder class.
+  // If the constraints are exceeded, the builder will crash.
+  int radius;
+  {
+    float r = border_radius_.value() * 1.f;
+    r = std::min(r, size.width() / 2.f);
+    r = std::min(r, size.height() / 2.f);
+    r = std::max(r, 0.f);
+    radius = std::floor(r);
+  }
+
+  // RoundedRectCutoutPathBuilder has a minimum size of 32 x 32.
+  if (radius > 0 && size.width() >= 32 && size.height() >= 32) {
+    auto builder = ash::RoundedRectCutoutPathBuilder(gfx::SizeF(size));
+    builder.CornerRadius(radius);
+    view_->SetClipPath(builder.Build());
+  } else {
+    view_->SetClipPath(SkPath());
+  }
+}
+
 void View::SetVisible(bool visible) {
   if (!view_)
     return;
   view_->SetVisible(visible);
 }
 
+bool View::GetVisible() const {
+  return view_ ? view_->GetVisible() : false;
+}
+
 void View::OnViewBoundsChanged(views::View* observed_view) {
+  ApplyBorderRadius();
   Emit("bounds-changed");
 }
 
 void View::OnViewIsDeleting(views::View* observed_view) {
   DCHECK_EQ(observed_view, view_);
   view_ = nullptr;
+}
+
+void View::OnChildViewRemoved(views::View* observed_view, views::View* child) {
+  std::erase_if(child_views_, [child](const ChildPair& child_view) {
+    return child_view.first == child;
+  });
 }
 
 // static
@@ -376,7 +433,7 @@ gin::Handle<View> View::Create(v8::Isolate* isolate) {
     if (gin::ConvertFromV8(isolate, obj, &view))
       return view;
   }
-  return gin::Handle<View>();
+  return {};
 }
 
 // static
@@ -390,8 +447,10 @@ void View::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("setBounds", &View::SetBounds)
       .SetMethod("getBounds", &View::GetBounds)
       .SetMethod("setBackgroundColor", &View::SetBackgroundColor)
+      .SetMethod("setBorderRadius", &View::SetBorderRadius)
       .SetMethod("setLayout", &View::SetLayout)
-      .SetMethod("setVisible", &View::SetVisible);
+      .SetMethod("setVisible", &View::SetVisible)
+      .SetMethod("getVisible", &View::GetVisible);
 }
 
 }  // namespace electron::api

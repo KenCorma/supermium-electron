@@ -10,10 +10,9 @@
 #include "base/memory/weak_ptr.h"
 #include "content/public/renderer/render_frame.h"
 #include "content/public/renderer/render_frame_observer.h"
-#include "electron/buildflags/buildflags.h"
-#include "electron/shell/common/api/api.mojom.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/receiver.h"
+#include "shell/common/api/api.mojom.h"
 
 namespace electron {
 
@@ -32,6 +31,7 @@ class ElectronApiServiceImpl : public mojom::ElectronRenderer,
 
   void BindTo(mojo::PendingReceiver<mojom::ElectronRenderer> receiver);
 
+  // mojom::ElectronRenderer
   void Message(bool internal,
                const std::string& channel,
                blink::CloneableMessage arguments) override;
@@ -50,7 +50,7 @@ class ElectronApiServiceImpl : public mojom::ElectronRenderer,
       mojo::ScopedMessagePipeHandle* interface_pipe) override;
 
  private:
-  // RenderFrameObserver implementation.
+  // content::RenderFrameObserver
   void DidCreateDocumentElement() override;
   void OnDestruct() override;
 
@@ -63,7 +63,7 @@ class ElectronApiServiceImpl : public mojom::ElectronRenderer,
   mojo::PendingReceiver<mojom::ElectronRenderer> pending_receiver_;
   mojo::Receiver<mojom::ElectronRenderer> receiver_{this};
 
-  RendererClientBase* renderer_client_;
+  raw_ptr<RendererClientBase> renderer_client_;
   base::WeakPtrFactory<ElectronApiServiceImpl> weak_factory_{this};
 };
 

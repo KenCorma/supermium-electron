@@ -18,8 +18,7 @@ class Archive : public node::ObjectWrap {
   static v8::Local<v8::FunctionTemplate> CreateFunctionTemplate(
       v8::Isolate* isolate) {
     auto tpl = v8::FunctionTemplate::New(isolate, Archive::New);
-    tpl->SetClassName(
-        v8::String::NewFromUtf8(isolate, "Archive").ToLocalChecked());
+    tpl->SetClassName(v8::String::NewFromUtf8Literal(isolate, "Archive"));
     tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
     NODE_SET_PROTOTYPE_METHOD(tpl, "getFileInfo", &Archive::GetFileInfo);
@@ -66,7 +65,7 @@ class Archive : public node::ObjectWrap {
   // Reads the offset and size of file.
   static void GetFileInfo(const v8::FunctionCallbackInfo<v8::Value>& args) {
     auto* isolate = args.GetIsolate();
-    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.Holder());
+    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.This());
 
     base::FilePath path;
     if (!gin::ConvertFromV8(isolate, args[0], &path)) {
@@ -92,8 +91,7 @@ class Archive : public node::ObjectWrap {
           integrity.Set("algorithm", "SHA256");
           break;
         case asar::HashAlgorithm::kNone:
-          CHECK(false);
-          break;
+          NOTREACHED();
       }
       integrity.Set("hash", info.integrity.value().hash);
       dict.Set("integrity", integrity);
@@ -104,7 +102,7 @@ class Archive : public node::ObjectWrap {
   // Returns a fake result of fs.stat(path).
   static void Stat(const v8::FunctionCallbackInfo<v8::Value>& args) {
     auto* isolate = args.GetIsolate();
-    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.Holder());
+    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.This());
     base::FilePath path;
     if (!gin::ConvertFromV8(isolate, args[0], &path)) {
       args.GetReturnValue().Set(v8::False(isolate));
@@ -127,7 +125,7 @@ class Archive : public node::ObjectWrap {
   // Returns all files under a directory.
   static void Readdir(const v8::FunctionCallbackInfo<v8::Value>& args) {
     auto* isolate = args.GetIsolate();
-    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.Holder());
+    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.This());
     base::FilePath path;
     if (!gin::ConvertFromV8(isolate, args[0], &path)) {
       args.GetReturnValue().Set(v8::False(isolate));
@@ -145,7 +143,7 @@ class Archive : public node::ObjectWrap {
   // Returns the path of file with symbol link resolved.
   static void Realpath(const v8::FunctionCallbackInfo<v8::Value>& args) {
     auto* isolate = args.GetIsolate();
-    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.Holder());
+    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.This());
     base::FilePath path;
     if (!gin::ConvertFromV8(isolate, args[0], &path)) {
       args.GetReturnValue().Set(v8::False(isolate));
@@ -163,7 +161,7 @@ class Archive : public node::ObjectWrap {
   // Copy the file out into a temporary file and returns the new path.
   static void CopyFileOut(const v8::FunctionCallbackInfo<v8::Value>& args) {
     auto* isolate = args.GetIsolate();
-    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.Holder());
+    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.This());
     base::FilePath path;
     if (!gin::ConvertFromV8(isolate, args[0], &path)) {
       args.GetReturnValue().Set(v8::False(isolate));
@@ -181,7 +179,7 @@ class Archive : public node::ObjectWrap {
   // Return the file descriptor.
   static void GetFD(const v8::FunctionCallbackInfo<v8::Value>& args) {
     auto* isolate = args.GetIsolate();
-    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.Holder());
+    auto* wrap = node::ObjectWrap::Unwrap<Archive>(args.This());
 
     args.GetReturnValue().Set(gin::ConvertToV8(
         isolate, wrap->archive_ ? wrap->archive_->GetUnsafeFD() : -1));

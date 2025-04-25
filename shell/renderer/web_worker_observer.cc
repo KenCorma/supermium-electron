@@ -4,11 +4,11 @@
 
 #include "shell/renderer/web_worker_observer.h"
 
-#include <set>
+#include <string_view>
 #include <utility>
 
 #include "base/no_destructor.h"
-#include "base/ranges/algorithm.h"
+#include "base/strings/strcat.h"
 #include "base/threading/thread_local.h"
 #include "shell/common/api/electron_bindings.h"
 #include "shell/common/gin_helper/event_emitter_caller.h"
@@ -50,15 +50,16 @@ void WebWorkerObserver::WorkerScriptReadyForEvaluation(
   v8::Context::Scope context_scope(worker_context);
   auto* isolate = worker_context->GetIsolate();
   v8::MicrotasksScope microtasks_scope(
-      isolate, worker_context->GetMicrotaskQueue(),
-      v8::MicrotasksScope::kDoNotRunMicrotasks);
+      worker_context, v8::MicrotasksScope::kDoNotRunMicrotasks);
 
   // Start the embed thread.
   node_bindings_->PrepareEmbedThread();
 
   // Setup node tracing controller.
-  if (!node::tracing::TraceEventHelper::GetAgent())
-    node::tracing::TraceEventHelper::SetAgent(node::CreateAgent());
+  if (!node::tracing::TraceEventHelper::GetAgent()) {
+    auto* tracing_agent = new node::tracing::Agent();
+    node::tracing::TraceEventHelper::SetAgent(tracing_agent);
+  }
 
   // Setup node environment for each window.
   v8::Maybe<bool> initialized = node::InitializeContext(worker_context);
@@ -72,19 +73,21 @@ void WebWorkerObserver::WorkerScriptReadyForEvaluation(
   // is loaded. See corresponding change in node/init.ts.
   v8::Local<v8::Object> global = worker_context->Global();
 
-  std::vector<std::string> keys = {"fetch", "Response", "FormData", "Request",
-                                   "Headers"};
-  for (const auto& key : keys) {
+  for (const std::string_view key :
+       {"fetch", "Response", "FormData", "Request", "Headers", "EventSource"}) {
     v8::MaybeLocal<v8::Value> value =
-        global->Get(worker_context, gin::StringToV8(isolate, key.c_str()));
+        global->Get(worker_context, gin::StringToV8(isolate, key));
     if (!value.IsEmpty()) {
-      std::string blink_key = "blink" + key;
+      std::string blink_key = base::StrCat({"blink", key});
       global
-          ->Set(worker_context, gin::StringToV8(isolate, blink_key.c_str()),
+          ->Set(worker_context, gin::StringToV8(isolate, blink_key),
                 value.ToLocalChecked())
           .Check();
     }
   }
+
+  // We do not want to crash Web Workers on unhandled rejections.
+  env->options()->unhandled_rejections = "warn-with-error-code";
 
   // Add Electron extended APIs.
   electron_bindings_->BindTo(env->isolate(), env->process_object());

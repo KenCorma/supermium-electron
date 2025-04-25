@@ -1,18 +1,21 @@
+import { app, BrowserWindow, Menu, session, net as electronNet, WebContents, utilityProcess } from 'electron/main';
+
 import { assert, expect } from 'chai';
+import * as semver from 'semver';
+import split = require('split')
+
 import * as cp from 'node:child_process';
-import * as https from 'node:https';
-import * as http from 'node:http';
-import * as net from 'node:net';
+import { once } from 'node:events';
 import * as fs from 'node:fs';
+import * as http from 'node:http';
+import * as https from 'node:https';
+import * as net from 'node:net';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
-import { app, BrowserWindow, Menu, session, net as electronNet, WebContents, utilityProcess } from 'electron/main';
-import { closeWindow, closeAllWindows } from './lib/window-helpers';
-import { ifdescribe, ifit, listen, waitUntil } from './lib/spec-helpers';
+
 import { collectStreamBody, getResponse } from './lib/net-helpers';
-import { once } from 'node:events';
-import split = require('split')
-import * as semver from 'semver';
+import { ifdescribe, ifit, listen, waitUntil } from './lib/spec-helpers';
+import { closeWindow, closeAllWindows } from './lib/window-helpers';
 
 const fixturesPath = path.resolve(__dirname, 'fixtures');
 
@@ -995,6 +998,44 @@ describe('app module', () => {
     });
   });
 
+  ifdescribe(process.platform === 'win32')('setJumpList(categories)', () => {
+    it('throws an error when categories is not null or an array', () => {
+      expect(() => {
+        app.setJumpList('string' as any);
+      }).to.throw('Argument must be null or an array of categories');
+    });
+
+    it('can get jump list settings', () => {
+      const settings = app.getJumpListSettings();
+      expect(settings).to.eql({ minItems: 10, removedItems: [] });
+    });
+
+    it('can set a jump list with an array of categories', () => {
+      expect(() => {
+        app.setJumpList([
+          { type: 'frequent' },
+          {
+            items: [{
+              type: 'task',
+              title: 'New Project',
+              program: process.execPath,
+              args: '--new-project',
+              description: 'Create a new project.'
+            },
+            { type: 'separator' },
+            {
+              type: 'task',
+              title: 'Recover Project',
+              program: process.execPath,
+              args: '--recover-project',
+              description: 'Recover Project'
+            }]
+          }
+        ]);
+      }).to.not.throw();
+    });
+  });
+
   describe('getAppPath', () => {
     it('works for directories with package.json', async () => {
       const { appPath } = await runTestApp('app-path');
@@ -1404,6 +1445,7 @@ describe('app module', () => {
 
         types.push(entry.type);
         expect(entry.cpu).to.have.ownProperty('percentCPUUsage').that.is.a('number');
+        expect(entry.cpu).to.have.ownProperty('cumulativeCPUUsage').that.is.a('number');
         expect(entry.cpu).to.have.ownProperty('idleWakeupsPerSecond').that.is.a('number');
 
         expect(entry.memory).to.have.property('workingSetSize').that.is.greaterThan(0);
@@ -1446,8 +1488,7 @@ describe('app module', () => {
     });
   });
 
-  // FIXME https://github.com/electron/electron/issues/24224
-  ifdescribe(process.platform !== 'linux')('getGPUInfo() API', () => {
+  ifdescribe(!process.env.IS_ASAN)('getGPUInfo() API', () => {
     const appPath = path.join(fixturesPath, 'api', 'gpu-info.js');
 
     const getGPUInfo = async (type: string) => {
@@ -1627,19 +1668,19 @@ describe('app module', () => {
 
   ifdescribe(process.platform === 'darwin')('dock APIs', () => {
     after(async () => {
-      await app.dock.show();
+      await app.dock?.show();
     });
 
     describe('dock.setMenu', () => {
       it('can be retrieved via dock.getMenu', () => {
-        expect(app.dock.getMenu()).to.equal(null);
+        expect(app.dock?.getMenu()).to.equal(null);
         const menu = new Menu();
-        app.dock.setMenu(menu);
-        expect(app.dock.getMenu()).to.equal(menu);
+        app.dock?.setMenu(menu);
+        expect(app.dock?.getMenu()).to.equal(menu);
       });
 
       it('keeps references to the menu', () => {
-        app.dock.setMenu(new Menu());
+        app.dock?.setMenu(new Menu());
         const v8Util = process._linkedBinding('electron_common_v8_util');
         v8Util.requestGarbageCollectionForTesting();
       });
@@ -1649,56 +1690,56 @@ describe('app module', () => {
       it('throws a descriptive error for a bad icon path', () => {
         const badPath = path.resolve('I', 'Do', 'Not', 'Exist');
         expect(() => {
-          app.dock.setIcon(badPath);
+          app.dock?.setIcon(badPath);
         }).to.throw(/Failed to load image from path (.+)/);
       });
     });
 
     describe('dock.bounce', () => {
       it('should return -1 for unknown bounce type', () => {
-        expect(app.dock.bounce('bad type' as any)).to.equal(-1);
+        expect(app.dock?.bounce('bad type' as any)).to.equal(-1);
       });
 
       it('should return a positive number for informational type', () => {
         const appHasFocus = !!BrowserWindow.getFocusedWindow();
         if (!appHasFocus) {
-          expect(app.dock.bounce('informational')).to.be.at.least(0);
+          expect(app.dock?.bounce('informational')).to.be.at.least(0);
         }
       });
 
       it('should return a positive number for critical type', () => {
         const appHasFocus = !!BrowserWindow.getFocusedWindow();
         if (!appHasFocus) {
-          expect(app.dock.bounce('critical')).to.be.at.least(0);
+          expect(app.dock?.bounce('critical')).to.be.at.least(0);
         }
       });
     });
 
     describe('dock.cancelBounce', () => {
       it('should not throw', () => {
-        app.dock.cancelBounce(app.dock.bounce('critical'));
+        app.dock?.cancelBounce(app.dock?.bounce('critical'));
       });
     });
 
     describe('dock.setBadge', () => {
       after(() => {
-        app.dock.setBadge('');
+        app.dock?.setBadge('');
       });
 
       it('should not throw', () => {
-        app.dock.setBadge('1');
+        app.dock?.setBadge('1');
       });
 
       it('should be retrievable via getBadge', () => {
-        app.dock.setBadge('test');
-        expect(app.dock.getBadge()).to.equal('test');
+        app.dock?.setBadge('test');
+        expect(app.dock?.getBadge()).to.equal('test');
       });
     });
 
     describe('dock.hide', () => {
       it('should not throw', () => {
-        app.dock.hide();
-        expect(app.dock.isVisible()).to.equal(false);
+        app.dock?.hide();
+        expect(app.dock?.isVisible()).to.equal(false);
       });
     });
 
@@ -1707,17 +1748,17 @@ describe('app module', () => {
     // See https://github.com/electron/electron/pull/25269 for more.
     describe('dock.show', () => {
       it('should not throw', () => {
-        return app.dock.show().then(() => {
-          expect(app.dock.isVisible()).to.equal(true);
+        return app.dock?.show().then(() => {
+          expect(app.dock?.isVisible()).to.equal(true);
         });
       });
 
       it('returns a Promise', () => {
-        expect(app.dock.show()).to.be.a('promise');
+        expect(app.dock?.show()).to.be.a('promise');
       });
 
       it('eventually fulfills', async () => {
-        await expect(app.dock.show()).to.eventually.be.fulfilled.equal(undefined);
+        await expect(app.dock?.show()).to.eventually.be.fulfilled.equal(undefined);
       });
     });
   });
@@ -2116,6 +2157,10 @@ describe('default behavior', () => {
       });
 
       serverUrl = (await listen(server)).url;
+    });
+
+    after(() => {
+      server.close();
     });
 
     it('should emit a login event on app when a WebContents hits a 401', async () => {

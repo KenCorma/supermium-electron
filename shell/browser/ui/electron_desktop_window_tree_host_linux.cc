@@ -12,8 +12,11 @@
 
 #include "base/feature_list.h"
 #include "base/i18n/rtl.h"
+#include "shell/browser/api/electron_api_web_contents.h"
 #include "shell/browser/native_window_features.h"
+#include "shell/browser/native_window_views.h"
 #include "shell/browser/ui/views/client_frame_view_linux.h"
+#include "third_party/skia/include/core/SkRegion.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/linux/linux_ui.h"
@@ -21,7 +24,6 @@
 #include "ui/platform_window/platform_window.h"
 #include "ui/views/widget/desktop_aura/desktop_window_tree_host.h"
 #include "ui/views/widget/desktop_aura/desktop_window_tree_host_linux.h"
-#include "ui/views/window/non_client_view.h"
 
 namespace electron {
 
@@ -43,6 +45,33 @@ bool ElectronDesktopWindowTreeHostLinux::SupportsClientFrameShadow() const {
 void ElectronDesktopWindowTreeHostLinux::OnWidgetInitDone() {
   views::DesktopWindowTreeHostLinux::OnWidgetInitDone();
   UpdateFrameHints();
+}
+
+bool ElectronDesktopWindowTreeHostLinux::IsShowingFrame() const {
+  return !native_window_view_->IsFullscreen() &&
+         !native_window_view_->IsMaximized() &&
+         !native_window_view_->IsMinimized();
+}
+
+gfx::Insets ElectronDesktopWindowTreeHostLinux::CalculateInsetsInDIP(
+    ui::PlatformWindowState window_state) const {
+  // If we are not showing frame, the insets should be zero.
+  if (!IsShowingFrame()) {
+    return gfx::Insets();
+  }
+
+  if (!native_window_view_->has_frame() ||
+      !native_window_view_->has_client_frame()) {
+    return gfx::Insets();
+  }
+
+  auto* view = static_cast<ClientFrameViewLinux*>(
+      native_window_view_->widget()->non_client_view()->frame_view());
+
+  gfx::Insets insets = view->RestoredMirroredFrameBorderInsets();
+  if (base::i18n::IsRTL())
+    insets.set_left_right(insets.right(), insets.left());
+  return insets;
 }
 
 void ElectronDesktopWindowTreeHostLinux::OnBoundsChanged(
@@ -76,9 +105,14 @@ void ElectronDesktopWindowTreeHostLinux::OnWindowTiledStateChanged(
   // of view.
   if (native_window_view_->has_frame() &&
       native_window_view_->has_client_frame()) {
-    static_cast<ClientFrameViewLinux*>(
-        native_window_view_->widget()->non_client_view()->frame_view())
-        ->set_tiled_edges(new_tiled_edges);
+    ClientFrameViewLinux* frame = static_cast<ClientFrameViewLinux*>(
+        native_window_view_->widget()->non_client_view()->frame_view());
+
+    bool maximized = new_tiled_edges.top && new_tiled_edges.left &&
+                     new_tiled_edges.bottom && new_tiled_edges.right;
+    bool tiled = new_tiled_edges.top || new_tiled_edges.left ||
+                 new_tiled_edges.bottom || new_tiled_edges.right;
+    frame->set_tiled(tiled && !maximized);
   }
   UpdateFrameHints();
 }
@@ -100,11 +134,6 @@ void ElectronDesktopWindowTreeHostLinux::UpdateWindowState(
       break;
     case ui::PlatformWindowState::kUnknown:
     case ui::PlatformWindowState::kNormal:
-    case ui::PlatformWindowState::kSnappedPrimary:
-    case ui::PlatformWindowState::kSnappedSecondary:
-    case ui::PlatformWindowState::kFloated:
-    case ui::PlatformWindowState::kPinnedFullscreen:
-    case ui::PlatformWindowState::kTrustedPinnedFullscreen:
       break;
   }
   switch (new_state) {
@@ -119,11 +148,6 @@ void ElectronDesktopWindowTreeHostLinux::UpdateWindowState(
       break;
     case ui::PlatformWindowState::kUnknown:
     case ui::PlatformWindowState::kNormal:
-    case ui::PlatformWindowState::kSnappedPrimary:
-    case ui::PlatformWindowState::kSnappedSecondary:
-    case ui::PlatformWindowState::kFloated:
-    case ui::PlatformWindowState::kPinnedFullscreen:
-    case ui::PlatformWindowState::kTrustedPinnedFullscreen:
       break;
   }
   window_state_ = new_state;
@@ -140,94 +164,112 @@ void ElectronDesktopWindowTreeHostLinux::OnDeviceScaleFactorChanged() {
 
 void ElectronDesktopWindowTreeHostLinux::UpdateFrameHints() {
   if (base::FeatureList::IsEnabled(features::kWaylandWindowDecorations)) {
-    if (SupportsClientFrameShadow() && native_window_view_->has_frame() &&
-        native_window_view_->has_client_frame()) {
-      UpdateClientDecorationHints(static_cast<ClientFrameViewLinux*>(
-          native_window_view_->widget()->non_client_view()->frame_view()));
+    if (!native_window_view_->has_frame() ||
+        !native_window_view_->has_client_frame())
+      return;
+
+    ui::PlatformWindow* window = platform_window();
+    auto window_state = window->GetPlatformWindowState();
+    float scale = device_scale_factor();
+    auto* view = static_cast<ClientFrameViewLinux*>(
+        native_window_view_->widget()->non_client_view()->frame_view());
+    const gfx::Size widget_size =
+        view->GetWidget()->GetWindowBoundsInScreen().size();
+
+    if (SupportsClientFrameShadow()) {
+      auto insets = CalculateInsetsInDIP(window_state);
+      if (insets.IsEmpty()) {
+        window->SetInputRegion(std::nullopt);
+      } else {
+        gfx::Rect input_bounds(widget_size);
+        input_bounds.Inset(insets - view->GetInputInsets());
+        input_bounds = gfx::ScaleToEnclosingRect(input_bounds, scale);
+        window->SetInputRegion(
+            std::optional<std::vector<gfx::Rect>>({input_bounds}));
+      }
+    }
+
+    if (ui::OzonePlatform::GetInstance()->IsWindowCompositingSupported()) {
+      // Set the opaque region.
+      std::vector<gfx::Rect> opaque_region;
+      if (IsShowingFrame()) {
+        // The opaque region is a list of rectangles that contain only fully
+        // opaque pixels of the window.  We need to convert the clipping
+        // rounded-rect into this format.
+        SkRRect rrect = view->GetRoundedWindowContentBounds();
+        gfx::RectF rectf(view->GetWindowContentBounds());
+        rectf.Scale(scale);
+        // It is acceptable to omit some pixels that are opaque, but the region
+        // must not include any translucent pixels.  Therefore, we must
+        // conservatively scale to the enclosed rectangle.
+        gfx::Rect rect = gfx::ToEnclosedRect(rectf);
+
+        // Create the initial region from the clipping rectangle without rounded
+        // corners.
+        SkRegion region(gfx::RectToSkIRect(rect));
+
+        // Now subtract out the small rectangles that cover the corners.
+        struct {
+          SkRRect::Corner corner;
+          bool left;
+          bool upper;
+        } kCorners[] = {
+            {SkRRect::kUpperLeft_Corner, true, true},
+            {SkRRect::kUpperRight_Corner, false, true},
+            {SkRRect::kLowerLeft_Corner, true, false},
+            {SkRRect::kLowerRight_Corner, false, false},
+        };
+        for (const auto& corner : kCorners) {
+          auto radii = rrect.radii(corner.corner);
+          auto rx = std::ceil(scale * radii.x());
+          auto ry = std::ceil(scale * radii.y());
+          auto corner_rect = SkIRect::MakeXYWH(
+              corner.left ? rect.x() : rect.right() - rx,
+              corner.upper ? rect.y() : rect.bottom() - ry, rx, ry);
+          region.op(corner_rect, SkRegion::kDifference_Op);
+        }
+
+        auto translucent_top_area_rect = SkIRect::MakeXYWH(
+            rect.x(), rect.y(), rect.width(),
+            std::ceil(view->GetTranslucentTopAreaHeight() * scale - rect.y()));
+        region.op(translucent_top_area_rect, SkRegion::kDifference_Op);
+
+        // Convert the region to a list of rectangles.
+        for (SkRegion::Iterator i(region); !i.done(); i.next()) {
+          opaque_region.push_back(gfx::SkIRectToRect(i.rect()));
+        }
+      } else {
+        // The entire window except for the translucent top is opaque.
+        gfx::Rect opaque_region_dip(widget_size);
+        gfx::Insets insets;
+        insets.set_top(view->GetTranslucentTopAreaHeight());
+        opaque_region_dip.Inset(insets);
+        opaque_region.push_back(
+            gfx::ScaleToEnclosingRect(opaque_region_dip, scale));
+      }
+      window->SetOpaqueRegion(opaque_region);
     }
 
     SizeConstraintsChanged();
   }
 }
 
-void ElectronDesktopWindowTreeHostLinux::UpdateClientDecorationHints(
-    ClientFrameViewLinux* view) {
-  ui::PlatformWindow* window = platform_window();
-  bool showing_frame = !native_window_view_->IsFullscreen();
-  float scale = device_scale_factor();
-
-  bool should_set_opaque_region = views::Widget::IsWindowCompositingSupported();
-
-  gfx::Insets insets;
-  gfx::Insets input_insets;
-  if (showing_frame) {
-    insets = view->GetBorderDecorationInsets();
-    if (base::i18n::IsRTL()) {
-      insets.set_left_right(insets.right(), insets.left());
+void ElectronDesktopWindowTreeHostLinux::DispatchEvent(ui::Event* event) {
+  if (event->IsMouseEvent()) {
+    auto* mouse_event = static_cast<ui::MouseEvent*>(event);
+    bool is_mousedown = mouse_event->type() == ui::EventType::kMousePressed;
+    bool is_system_menu_trigger =
+        is_mousedown &&
+        (mouse_event->IsRightMouseButton() ||
+         (mouse_event->IsLeftMouseButton() && mouse_event->IsControlDown()));
+    if (is_system_menu_trigger) {
+      electron::api::WebContents::SetDisableDraggableRegions(true);
+      views::DesktopWindowTreeHostLinux::DispatchEvent(event);
+      electron::api::WebContents::SetDisableDraggableRegions(false);
+      return;
     }
-
-    input_insets = view->GetInputInsets();
   }
-  const auto tiled_edges = view->tiled_edges();
-  if (tiled_edges.left)
-    insets.set_left(0);
-  if (tiled_edges.right)
-    insets.set_right(0);
-  if (tiled_edges.top)
-    insets.set_top(0);
-  if (tiled_edges.bottom)
-    insets.set_bottom(0);
-  gfx::Insets scaled_insets = gfx::ScaleToCeiledInsets(insets, scale);
-  window->SetDecorationInsets(&scaled_insets);
-
-  gfx::Rect input_bounds(view->GetWidget()->GetWindowBoundsInScreen().size());
-  input_bounds.Inset(insets + input_insets);
-  window->SetInputRegion(std::optional<std::vector<gfx::Rect>>(
-      {gfx::ScaleToEnclosingRect(input_bounds, scale)}));
-
-  if (should_set_opaque_region) {
-    // The opaque region is a list of rectangles that contain only fully
-    // opaque pixels of the window.  We need to convert the clipping
-    // rounded-rect into this format.
-    SkRRect rrect = view->GetRoundedWindowContentBounds();
-    gfx::RectF rectf(view->GetWindowContentBounds());
-    rectf.Scale(scale);
-    // It is acceptable to omit some pixels that are opaque, but the region
-    // must not include any translucent pixels.  Therefore, we must
-    // conservatively scale to the enclosed rectangle.
-    gfx::Rect rect = gfx::ToEnclosedRect(rectf);
-
-    // Create the initial region from the clipping rectangle without rounded
-    // corners.
-    SkRegion region(gfx::RectToSkIRect(rect));
-
-    // Now subtract out the small rectangles that cover the corners.
-    struct {
-      SkRRect::Corner corner;
-      bool left;
-      bool upper;
-    } kCorners[] = {
-        {SkRRect::kUpperLeft_Corner, true, true},
-        {SkRRect::kUpperRight_Corner, false, true},
-        {SkRRect::kLowerLeft_Corner, true, false},
-        {SkRRect::kLowerRight_Corner, false, false},
-    };
-    for (const auto& corner : kCorners) {
-      auto radii = rrect.radii(corner.corner);
-      auto rx = std::ceil(scale * radii.x());
-      auto ry = std::ceil(scale * radii.y());
-      auto corner_rect = SkIRect::MakeXYWH(
-          corner.left ? rect.x() : rect.right() - rx,
-          corner.upper ? rect.y() : rect.bottom() - ry, rx, ry);
-      region.op(corner_rect, SkRegion::kDifference_Op);
-    }
-
-    // Convert the region to a list of rectangles.
-    std::vector<gfx::Rect> opaque_region;
-    for (SkRegion::Iterator i(region); !i.done(); i.next())
-      opaque_region.emplace_back(gfx::SkIRectToRect(i.rect()));
-    window->SetOpaqueRegion(opaque_region);
-  }
+  views::DesktopWindowTreeHostLinux::DispatchEvent(event);
 }
 
 }  // namespace electron

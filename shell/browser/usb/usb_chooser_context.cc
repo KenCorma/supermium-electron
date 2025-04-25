@@ -4,34 +4,30 @@
 
 #include "shell/browser/usb/usb_chooser_context.h"
 
+#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "base/containers/contains.h"
 #include "base/functional/bind.h"
-#include "base/observer_list.h"
-#include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
-#include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
-#include "build/build_config.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "content/public/browser/device_service.h"
 #include "services/device/public/cpp/usb/usb_ids.h"
 #include "services/device/public/mojom/usb_device.mojom.h"
 #include "shell/browser/api/electron_api_session.h"
+#include "shell/browser/electron_browser_context.h"
 #include "shell/browser/electron_permission_manager.h"
 #include "shell/browser/web_contents_permission_helper.h"
 #include "shell/common/electron_constants.h"
 #include "shell/common/gin_converters/usb_device_info_converter.h"
-#include "shell/common/node_includes.h"
+#include "shell/common/gin_helper/dictionary.h"
 #include "ui/base/l10n/l10n_util.h"
 
 namespace {
 
-constexpr char kDeviceNameKey[] = "productName";
-constexpr char kDeviceIdKey[] = "deviceId";
+constexpr std::string_view kDeviceNameKey = "productName";
+constexpr std::string_view kDeviceIdKey = "deviceId";
 constexpr int kUsbClassMassStorage = 0x08;
 
 bool CanStorePersistentEntry(const device::mojom::UsbDeviceInfo& device_info) {
@@ -66,14 +62,6 @@ bool ShouldExposeDevice(const device::mojom::UsbDeviceInfo& device_info) {
 
 namespace electron {
 
-void UsbChooserContext::DeviceObserver::OnDeviceAdded(
-    const device::mojom::UsbDeviceInfo& device_info) {}
-
-void UsbChooserContext::DeviceObserver::OnDeviceRemoved(
-    const device::mojom::UsbDeviceInfo& device_info) {}
-
-void UsbChooserContext::DeviceObserver::OnDeviceManagerConnectionError() {}
-
 UsbChooserContext::UsbChooserContext(ElectronBrowserContext* context)
     : browser_context_(context) {}
 
@@ -83,7 +71,7 @@ base::Value UsbChooserContext::DeviceInfoToValue(
   base::Value::Dict device_value;
   device_value.Set(kDeviceNameKey, device_info.product_name
                                        ? *device_info.product_name
-                                       : base::StringPiece16());
+                                       : std::u16string_view());
   device_value.Set(kDeviceVendorIdKey, device_info.vendor_id);
   device_value.Set(kDeviceProductIdKey, device_info.product_id);
 
@@ -169,7 +157,7 @@ UsbChooserContext::~UsbChooserContext() {
 void UsbChooserContext::RevokeDevicePermissionWebInitiated(
     const url::Origin& origin,
     const device::mojom::UsbDeviceInfo& device) {
-  DCHECK(base::Contains(devices_, device.guid));
+  DCHECK(devices_.contains(device.guid));
   RevokeObjectPermissionInternal(origin, DeviceInfoToValue(device),
                                  /*revoked_by_website=*/true);
 }
@@ -228,8 +216,7 @@ bool UsbChooserContext::HasDevicePermission(
     const url::Origin& origin,
     const device::mojom::UsbDeviceInfo& device_info) {
   auto it = ephemeral_devices_.find(origin);
-  if (it != ephemeral_devices_.end() &&
-      base::Contains(it->second, device_info.guid)) {
+  if (it != ephemeral_devices_.end() && it->second.contains(device_info.guid)) {
     return true;
   }
 
@@ -295,7 +282,7 @@ void UsbChooserContext::OnDeviceAdded(
     device::mojom::UsbDeviceInfoPtr device_info) {
   DCHECK(device_info);
   // Update the device list.
-  DCHECK(!base::Contains(devices_, device_info->guid));
+  DCHECK(!devices_.contains(device_info->guid));
   if (!ShouldExposeDevice(*device_info))
     return;
   devices_.insert(std::make_pair(device_info->guid, device_info->Clone()));
@@ -310,13 +297,13 @@ void UsbChooserContext::OnDeviceRemoved(
   DCHECK(device_info);
 
   if (!ShouldExposeDevice(*device_info)) {
-    DCHECK(!base::Contains(devices_, device_info->guid));
+    DCHECK(!devices_.contains(device_info->guid));
     return;
   }
 
   // Update the device list.
-  DCHECK(base::Contains(devices_, device_info->guid));
-  devices_.erase(device_info->guid);
+  const size_t n_erased = devices_.erase(device_info->guid);
+  DCHECK_EQ(n_erased, 1U);
 
   // Notify all device observers.
   for (auto& observer : device_observer_list_)

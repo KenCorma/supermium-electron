@@ -4,7 +4,6 @@
 
 #include "shell/browser/api/electron_api_notification.h"
 
-#include "base/strings/utf_string_conversions.h"
 #include "base/uuid.h"
 #include "gin/handle.h"
 #include "shell/browser/api/electron_api_menu.h"
@@ -12,6 +11,7 @@
 #include "shell/browser/electron_browser_client.h"
 #include "shell/common/gin_converters/image_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
+#include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/gin_helper/object_template_builder.h"
 #include "shell/common/node_includes.h"
 #include "url/gurl.h"
@@ -81,7 +81,7 @@ gin::Handle<Notification> Notification::New(gin_helper::ErrorThrower thrower,
                                             gin::Arguments* args) {
   if (!Browser::Get()->is_ready()) {
     thrower.ThrowError("Cannot create Notification before app is ready");
-    return gin::Handle<Notification>();
+    return {};
   }
   return gin::CreateHandle(thrower.isolate(), new Notification(args));
 }
@@ -234,6 +234,10 @@ void Notification::FillObjectTemplate(v8::Isolate* isolate,
 
 const char* Notification::GetTypeName() {
   return GetClassName();
+}
+
+void Notification::WillBeDestroyed() {
+  ClearWeak();
 }
 
 }  // namespace electron::api

@@ -4,17 +4,11 @@
 
 #include "shell/browser/hid/hid_chooser_context.h"
 
+#include <string_view>
 #include <utility>
 
-#if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
-#include <string_view>
-#endif  // BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
-
 #include "base/command_line.h"
-#include "base/containers/contains.h"
 #include "base/containers/map_util.h"
-#include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "chrome/grit/generated_resources.h"
@@ -24,6 +18,7 @@
 #include "services/device/public/cpp/hid/hid_blocklist.h"
 #include "services/device/public/cpp/hid/hid_switches.h"
 #include "shell/browser/api/electron_api_session.h"
+#include "shell/browser/electron_browser_context.h"
 #include "shell/browser/electron_permission_manager.h"
 #include "shell/browser/web_contents_permission_helper.h"
 #include "shell/common/electron_constants.h"
@@ -32,6 +27,7 @@
 #include "shell/common/gin_converters/hid_device_info_converter.h"
 #include "shell/common/gin_converters/value_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
+#include "third_party/abseil-cpp/absl/strings/str_format.h"
 #include "third_party/blink/public/common/permissions/permission_utils.h"
 #include "ui/base/l10n/l10n_util.h"
 
@@ -41,9 +37,6 @@
 #endif  // BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
 
 namespace electron {
-
-const char kHidDeviceNameKey[] = "name";
-const char kHidGuidKey[] = "guid";
 
 HidChooserContext::HidChooserContext(ElectronBrowserContext* context)
     : browser_context_(context) {}
@@ -62,7 +55,7 @@ std::u16string HidChooserContext::DisplayNameFromDeviceInfo(
     const device::mojom::HidDeviceInfo& device) {
   if (device.product_name.empty()) {
     auto device_id_string = base::ASCIIToUTF16(
-        base::StringPrintf("%04X:%04X", device.vendor_id, device.product_id));
+        absl::StrFormat("%04X:%04X", device.vendor_id, device.product_id));
     return l10n_util::GetStringFUTF16(IDS_HID_CHOOSER_ITEM_WITHOUT_NAME,
                                       device_id_string);
   }
@@ -100,7 +93,7 @@ base::Value HidChooserContext::DeviceInfoToValue(
 void HidChooserContext::GrantDevicePermission(
     const url::Origin& origin,
     const device::mojom::HidDeviceInfo& device) {
-  DCHECK(base::Contains(devices_, device.guid));
+  DCHECK(devices_.contains(device.guid));
   if (CanStorePersistentEntry(device)) {
     auto* permission_manager = static_cast<ElectronPermissionManager*>(
         browser_context_->GetPermissionControllerDelegate());
@@ -117,7 +110,7 @@ void HidChooserContext::GrantDevicePermission(
 void HidChooserContext::RevokeDevicePermission(
     const url::Origin& origin,
     const device::mojom::HidDeviceInfo& device) {
-  DCHECK(base::Contains(devices_, device.guid));
+  DCHECK(devices_.contains(device.guid));
   if (CanStorePersistentEntry(device)) {
     RevokePersistentDevicePermission(origin, device);
   } else {
@@ -173,8 +166,7 @@ bool HidChooserContext::HasDevicePermission(
     return false;
 
   auto it = ephemeral_devices_.find(origin);
-  if (it != ephemeral_devices_.end() &&
-      base::Contains(it->second, device.guid)) {
+  if (it != ephemeral_devices_.end() && it->second.contains(device.guid)) {
     return true;
   }
 
@@ -195,7 +187,7 @@ bool HidChooserContext::IsFidoAllowedForOrigin(const url::Origin& origin) {
       });
 
   if (origin.scheme() == extensions::kExtensionScheme &&
-      base::Contains(kPrivilegedExtensionIds, origin.host())) {
+      kPrivilegedExtensionIds.contains(origin.host())) {
     return true;
   }
 #endif  // BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
@@ -251,7 +243,7 @@ void HidChooserContext::DeviceAdded(device::mojom::HidDeviceInfoPtr device) {
   DCHECK(device);
 
   // Update the device list.
-  if (!base::Contains(devices_, device->guid))
+  if (!devices_.contains(device->guid))
     devices_.insert({device->guid, device->Clone()});
 
   // Notify all observers.
@@ -261,10 +253,10 @@ void HidChooserContext::DeviceAdded(device::mojom::HidDeviceInfoPtr device) {
 
 void HidChooserContext::DeviceRemoved(device::mojom::HidDeviceInfoPtr device) {
   DCHECK(device);
-  DCHECK(base::Contains(devices_, device->guid));
 
   // Update the device list.
-  devices_.erase(device->guid);
+  const size_t n_erased = devices_.erase(device->guid);
+  DCHECK_EQ(n_erased, 1U);
 
   // Notify all device observers.
   for (auto& observer : device_observer_list_)
@@ -282,10 +274,11 @@ void HidChooserContext::DeviceRemoved(device::mojom::HidDeviceInfoPtr device) {
 
 void HidChooserContext::DeviceChanged(device::mojom::HidDeviceInfoPtr device) {
   DCHECK(device);
-  DCHECK(base::Contains(devices_, device->guid));
 
   // Update the device list.
-  devices_[device->guid] = device->Clone();
+  auto& mapped = devices_[device->guid];
+  DCHECK(!mapped.is_null());
+  mapped = device->Clone();
 
   // Notify all observers.
   for (auto& observer : device_observer_list_)

@@ -1,11 +1,14 @@
-import { expect } from 'chai';
-import * as path from 'node:path';
-import * as http from 'node:http';
-import { emittedNTimes } from './lib/events-helpers';
-import { closeWindow } from './lib/window-helpers';
 import { app, BrowserWindow, ipcMain } from 'electron/main';
-import { ifdescribe, listen } from './lib/spec-helpers';
+
+import { expect } from 'chai';
+
 import { once } from 'node:events';
+import * as http from 'node:http';
+import * as path from 'node:path';
+
+import { emittedNTimes } from './lib/events-helpers';
+import { ifdescribe, listen } from './lib/spec-helpers';
+import { closeWindow } from './lib/window-helpers';
 
 describe('renderer nodeIntegrationInSubFrames', () => {
   const generateTests = (description: string, webPreferences: any) => {
@@ -211,6 +214,40 @@ describe('renderer nodeIntegrationInSubFrames', () => {
       await w.loadURL('about:blank');
       return Promise.race([promisePass, promiseFail]);
     });
+  });
+});
+
+describe('subframe with non-standard schemes', () => {
+  it('should not crash when changing subframe src to about:blank and back', async () => {
+    const w = new BrowserWindow({ show: false, width: 400, height: 400 });
+
+    const fwfPath = path.resolve(__dirname, 'fixtures/sub-frames/frame-with-frame.html');
+    await w.loadFile(fwfPath);
+
+    const originalSrc = await w.webContents.executeJavaScript(`
+      const iframe = document.querySelector('iframe');
+      iframe.src;
+    `);
+
+    const updatedSrc = await w.webContents.executeJavaScript(`
+      new Promise((resolve, reject) => {
+        const iframe = document.querySelector('iframe');
+        iframe.src = 'about:blank';
+        resolve(iframe.src);
+      })
+    `);
+
+    expect(updatedSrc).to.equal('about:blank');
+
+    const restoredSrc = await w.webContents.executeJavaScript(`
+      new Promise((resolve, reject) => {
+        const iframe = document.querySelector('iframe');
+        iframe.src = '${originalSrc}';
+        resolve(iframe.src);
+      })
+    `);
+
+    expect(restoredSrc).to.equal(originalSrc);
   });
 });
 

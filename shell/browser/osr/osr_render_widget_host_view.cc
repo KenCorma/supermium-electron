@@ -8,20 +8,20 @@
 #include <memory>
 #include <optional>
 #include <utility>
-#include <vector>
 
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
+#include "components/input/cursor_manager.h"
 #include "components/viz/common/features.h"
 #include "components/viz/common/frame_sinks/begin_frame_args.h"
 #include "components/viz/common/frame_sinks/copy_output_request.h"
 #include "components/viz/common/frame_sinks/delay_based_time_source.h"
 #include "components/viz/common/quads/compositor_render_pass.h"
-#include "content/browser/renderer_host/cursor_manager.h"  // nogncheck
 #include "content/browser/renderer_host/render_widget_host_delegate.h"  // nogncheck
 #include "content/browser/renderer_host/render_widget_host_owner_delegate.h"  // nogncheck
 #include "content/common/input/synthetic_gesture.h"  // nogncheck
@@ -32,7 +32,7 @@
 #include "content/public/browser/gpu_data_manager.h"
 #include "content/public/browser/render_process_host.h"
 #include "gpu/command_buffer/client/gl_helper.h"
-#include "media/base/video_frame.h"
+#include "shell/browser/osr/osr_host_display_client.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "ui/compositor/compositor.h"
@@ -41,7 +41,6 @@
 #include "ui/display/screen.h"
 #include "ui/events/base_event_utils.h"
 #include "ui/events/event_constants.h"
-#include "ui/gfx/canvas.h"
 #include "ui/gfx/geometry/dip_util.h"
 #include "ui/gfx/geometry/size_conversions.h"
 #include "ui/gfx/image/image_skia.h"
@@ -56,31 +55,6 @@ namespace {
 const float kDefaultScaleFactor = 1.0;
 
 ui::MouseEvent UiMouseEventFromWebMouseEvent(blink::WebMouseEvent event) {
-  ui::EventType type = ui::EventType::ET_UNKNOWN;
-  switch (event.GetType()) {
-    case blink::WebInputEvent::Type::kMouseDown:
-      type = ui::EventType::ET_MOUSE_PRESSED;
-      break;
-    case blink::WebInputEvent::Type::kMouseUp:
-      type = ui::EventType::ET_MOUSE_RELEASED;
-      break;
-    case blink::WebInputEvent::Type::kMouseMove:
-      type = ui::EventType::ET_MOUSE_MOVED;
-      break;
-    case blink::WebInputEvent::Type::kMouseEnter:
-      type = ui::EventType::ET_MOUSE_ENTERED;
-      break;
-    case blink::WebInputEvent::Type::kMouseLeave:
-      type = ui::EventType::ET_MOUSE_EXITED;
-      break;
-    case blink::WebInputEvent::Type::kMouseWheel:
-      type = ui::EventType::ET_MOUSEWHEEL;
-      break;
-    default:
-      type = ui::EventType::ET_UNKNOWN;
-      break;
-  }
-
   int button_flags = 0;
   switch (event.button) {
     case blink::WebMouseEvent::Button::kBack:
@@ -103,12 +77,12 @@ ui::MouseEvent UiMouseEventFromWebMouseEvent(blink::WebMouseEvent event) {
       break;
   }
 
-  ui::MouseEvent ui_event(type,
-                          gfx::Point(std::floor(event.PositionInWidget().x()),
-                                     std::floor(event.PositionInWidget().y())),
-                          gfx::Point(std::floor(event.PositionInWidget().x()),
-                                     std::floor(event.PositionInWidget().y())),
-                          ui::EventTimeForNow(), button_flags, button_flags);
+  ui::MouseEvent ui_event{event.GetTypeAsUiEventType(),
+                          event.PositionInWidget(),
+                          event.PositionInWidget(),
+                          ui::EventTimeForNow(),
+                          button_flags,
+                          button_flags};
   ui_event.SetClickCount(event.click_count);
 
   return ui_event;
@@ -116,9 +90,9 @@ ui::MouseEvent UiMouseEventFromWebMouseEvent(blink::WebMouseEvent event) {
 
 ui::MouseWheelEvent UiMouseWheelEventFromWebMouseEvent(
     blink::WebMouseWheelEvent event) {
-  return ui::MouseWheelEvent(UiMouseEventFromWebMouseEvent(event),
-                             std::floor(event.delta_x),
-                             std::floor(event.delta_y));
+  return {UiMouseEventFromWebMouseEvent(event),
+          base::ClampFloor<int>(event.delta_x),
+          base::ClampFloor<int>(event.delta_y)};
 }
 
 }  // namespace
@@ -135,15 +109,16 @@ class ElectronDelegatedFrameHostClient
   ElectronDelegatedFrameHostClient& operator=(
       const ElectronDelegatedFrameHostClient&) = delete;
 
-  ui::Layer* DelegatedFrameHostGetLayer() const override {
+  // content::DelegatedFrameHostClient
+  [[nodiscard]] ui::Layer* DelegatedFrameHostGetLayer() const override {
     return view_->root_layer();
   }
 
-  bool DelegatedFrameHostIsVisible() const override {
+  [[nodiscard]] bool DelegatedFrameHostIsVisible() const override {
     return view_->IsShowing();
   }
 
-  SkColor DelegatedFrameHostGetGutterColor() const override {
+  [[nodiscard]] SkColor DelegatedFrameHostGetGutterColor() const override {
     if (view_->render_widget_host()->delegate() &&
         view_->render_widget_host()->delegate()->IsFullscreen()) {
       return SK_ColorWHITE;
@@ -156,12 +131,15 @@ class ElectronDelegatedFrameHostClient
     view_->render_widget_host()->DidProcessFrame(frame_token, activation_time);
   }
 
-  float GetDeviceScaleFactor() const override {
+  [[nodiscard]] float GetDeviceScaleFactor() const override {
     return view_->GetDeviceScaleFactor();
   }
 
-  std::vector<viz::SurfaceId> CollectSurfaceIdsForEviction() override {
-    return view_->render_widget_host()->CollectSurfaceIdsForEviction();
+  viz::FrameEvictorClient::EvictIds CollectSurfaceIdsForEviction() override {
+    viz::FrameEvictorClient::EvictIds ids;
+    ids.embedded_ids =
+        view_->render_widget_host()->CollectSurfaceIdsForEviction();
+    return ids;
   }
 
   bool ShouldShowStaleContentOnEviction() override { return false; }
@@ -174,6 +152,7 @@ class ElectronDelegatedFrameHostClient
 
 OffScreenRenderWidgetHostView::OffScreenRenderWidgetHostView(
     bool transparent,
+    bool offscreen_use_shared_texture,
     bool painting,
     int frame_rate,
     const OnPaintCallback& callback,
@@ -184,6 +163,7 @@ OffScreenRenderWidgetHostView::OffScreenRenderWidgetHostView(
       render_widget_host_(content::RenderWidgetHostImpl::From(host)),
       parent_host_view_(parent_host_view),
       transparent_(transparent),
+      offscreen_use_shared_texture_(offscreen_use_shared_texture),
       callback_(callback),
       frame_rate_(frame_rate),
       size_(initial_size),
@@ -194,7 +174,7 @@ OffScreenRenderWidgetHostView::OffScreenRenderWidgetHostView(
           AllocateFrameSinkId(),
           delegated_frame_host_client_.get(),
           true /* should_register_frame_sink_id */)},
-      cursor_manager_(std::make_unique<content::CursorManager>(this)),
+      cursor_manager_(std::make_unique<input::CursorManager>(this)),
       mouse_wheel_phase_handler_(this),
       backing_(std::make_unique<SkBitmap>()) {
   DCHECK(render_widget_host_);
@@ -214,8 +194,6 @@ OffScreenRenderWidgetHostView::OffScreenRenderWidgetHostView(
 
   root_layer_ = std::make_unique<ui::Layer>(ui::LAYER_SOLID_COLOR);
 
-  bool opaque = SkColorGetA(background_color_) == SK_AlphaOPAQUE;
-  root_layer()->SetFillsBoundsOpaquely(opaque);
   root_layer()->SetColor(background_color_);
 
   ui::ContextFactory* context_factory = content::GetContextFactory();
@@ -229,8 +207,8 @@ OffScreenRenderWidgetHostView::OffScreenRenderWidgetHostView(
   compositor_->SetRootLayer(root_layer_.get());
 
   ResizeRootLayer(false);
+
   render_widget_host_->SetView(this);
-  render_widget_host_->render_frame_metadata_provider()->AddObserver(this);
 
   if (content::GpuDataManager::GetInstance()->HardwareAccelerationEnabled()) {
     video_consumer_ = std::make_unique<OffScreenVideoConsumer>(
@@ -254,17 +232,32 @@ void OffScreenRenderWidgetHostView::OnLocalSurfaceIdChanged(
 }
 
 OffScreenRenderWidgetHostView::~OffScreenRenderWidgetHostView() {
-  render_widget_host_->render_frame_metadata_provider()->RemoveObserver(this);
+  ReleaseCompositor();
+  root_layer_.reset();
+
+  DCHECK(!parent_host_view_);
+  DCHECK(!popup_host_view_);
+  DCHECK(!child_host_view_);
+  DCHECK(guest_host_views_.empty());
+}
+
+void OffScreenRenderWidgetHostView::ReleaseCompositor() {
+  if (!compositor_) {
+    return;  // already released
+  }
 
   // Marking the DelegatedFrameHost as removed from the window hierarchy is
   // necessary to remove all connections to its old ui::Compositor.
-  if (is_showing_)
-    delegated_frame_host_->WasHidden(
+  if (is_showing_) {
+    delegated_frame_host()->WasHidden(
         content::DelegatedFrameHost::HiddenCause::kOther);
-  delegated_frame_host_->DetachFromCompositor();
+  }
 
+  delegated_frame_host()->DetachFromCompositor();
+  delegated_frame_host_.reset();
+
+  host_display_client_ = nullptr;
   compositor_.reset();
-  root_layer_.reset();
 }
 
 void OffScreenRenderWidgetHostView::InitAsChild(gfx::NativeView) {
@@ -291,19 +284,17 @@ void OffScreenRenderWidgetHostView::SetBounds(const gfx::Rect& new_bounds) {
 }
 
 gfx::NativeView OffScreenRenderWidgetHostView::GetNativeView() {
-  return gfx::NativeView();
+  return {};
 }
 
 gfx::NativeViewAccessible
 OffScreenRenderWidgetHostView::GetNativeViewAccessible() {
-  return gfx::NativeViewAccessible();
+  return {};
 }
 
 ui::TextInputClient* OffScreenRenderWidgetHostView::GetTextInputClient() {
   return nullptr;
 }
-
-void OffScreenRenderWidgetHostView::Focus() {}
 
 bool OffScreenRenderWidgetHostView::HasFocus() {
   return false;
@@ -324,21 +315,36 @@ void OffScreenRenderWidgetHostView::ShowWithVisibility(
   delegated_frame_host_->WasShown(GetLocalSurfaceId(),
                                   root_layer()->bounds().size(), {});
 
-  if (render_widget_host_)
-    render_widget_host_->WasShown({});
+  if (render_widget_host_) {
+    render_widget_host_->WasShown(
+        /*record_tab_switch_time_request=*/{});
+
+    // Call OnRenderFrameMetadataChangedAfterActivation for every frame.
+    auto* provider = content::RenderWidgetHostImpl::From(render_widget_host_)
+                         ->render_frame_metadata_provider();
+    provider->AddObserver(this);
+  }
 }
 
 void OffScreenRenderWidgetHostView::Hide() {
   if (!is_showing_)
     return;
 
-  if (render_widget_host_)
-    render_widget_host_->WasHidden();
+  if (render_widget_host_) {
+    // TODO(codebytere) - remove when CL:6250383 is released.
+    if (render_widget_host_->delegate())
+      render_widget_host_->WasHidden();
 
-  // TODO(deermichel): correct or kOther?
-  delegated_frame_host()->WasHidden(
-      content::DelegatedFrameHost::HiddenCause::kOccluded);
-  delegated_frame_host()->DetachFromCompositor();
+    auto* provider = content::RenderWidgetHostImpl::From(render_widget_host_)
+                         ->render_frame_metadata_provider();
+    provider->RemoveObserver(this);
+  }
+
+  if (delegated_frame_host()) {
+    delegated_frame_host()->WasHidden(
+        content::DelegatedFrameHost::HiddenCause::kOther);
+    delegated_frame_host()->DetachFromCompositor();
+  }
 
   is_showing_ = false;
 }
@@ -374,13 +380,9 @@ std::optional<SkColor> OffScreenRenderWidgetHostView::GetBackgroundColor() {
   return background_color_;
 }
 
-void OffScreenRenderWidgetHostView::UpdateBackgroundColor() {}
-
 gfx::Size OffScreenRenderWidgetHostView::GetVisibleViewportSize() {
   return size_;
 }
-
-void OffScreenRenderWidgetHostView::SetInsets(const gfx::Insets& insets) {}
 
 blink::mojom::PointerLockResult OffScreenRenderWidgetHostView::LockPointer(
     bool request_unadjusted_movement) {
@@ -392,8 +394,6 @@ OffScreenRenderWidgetHostView::ChangePointerLock(
     bool request_unadjusted_movement) {
   return blink::mojom::PointerLockResult::kUnsupportedOptions;
 }
-
-void OffScreenRenderWidgetHostView::UnlockPointer() {}
 
 void OffScreenRenderWidgetHostView::TakeFallbackContentFrom(
     content::RenderWidgetHostView* view) {
@@ -444,18 +444,9 @@ void OffScreenRenderWidgetHostView::InitAsPopup(
   Show();
 }
 
-void OffScreenRenderWidgetHostView::UpdateCursor(const ui::Cursor&) {}
-
-content::CursorManager* OffScreenRenderWidgetHostView::GetCursorManager() {
+input::CursorManager* OffScreenRenderWidgetHostView::GetCursorManager() {
   return cursor_manager_.get();
 }
-
-void OffScreenRenderWidgetHostView::SetIsLoading(bool loading) {}
-
-void OffScreenRenderWidgetHostView::TextInputStateChanged(
-    const ui::mojom::TextInputState& params) {}
-
-void OffScreenRenderWidgetHostView::ImeCancelComposition() {}
 
 void OffScreenRenderWidgetHostView::RenderProcessGone() {
   Destroy();
@@ -489,9 +480,6 @@ void OffScreenRenderWidgetHostView::Destroy() {
   delete this;
 }
 
-void OffScreenRenderWidgetHostView::UpdateTooltipUnderCursor(
-    const std::u16string&) {}
-
 uint32_t OffScreenRenderWidgetHostView::GetCaptureSequenceNumber() const {
   return latest_capture_sequence_number_;
 }
@@ -517,9 +505,6 @@ display::ScreenInfo OffScreenRenderWidgetHostView::GetScreenInfo() const {
   return screen_info;
 }
 
-void OffScreenRenderWidgetHostView::TransformPointToRootSurface(
-    gfx::PointF* point) {}
-
 gfx::Rect OffScreenRenderWidgetHostView::GetBoundsInRootWindow() {
   return gfx::Rect(size_);
 }
@@ -528,9 +513,6 @@ std::optional<content::DisplayFeature>
 OffScreenRenderWidgetHostView::GetDisplayFeature() {
   return std::nullopt;
 }
-
-void OffScreenRenderWidgetHostView::SetDisplayFeatureForTesting(
-    const content::DisplayFeature* display_feature) {}
 
 viz::SurfaceId OffScreenRenderWidgetHostView::GetCurrentSurfaceId() const {
   return delegated_frame_host() ? delegated_frame_host()->GetCurrentSurfaceId()
@@ -542,11 +524,6 @@ OffScreenRenderWidgetHostView::CreateSyntheticGestureTarget() {
   NOTIMPLEMENTED();
   return nullptr;
 }
-
-void OffScreenRenderWidgetHostView::ImeCompositionRangeChanged(
-    const gfx::Range&,
-    const std::optional<std::vector<gfx::Rect>>& character_bounds,
-    const std::optional<std::vector<gfx::Rect>>& line_bounds) {}
 
 gfx::Size OffScreenRenderWidgetHostView::GetCompositorViewportPixelSize() {
   return gfx::ScaleToCeiledSize(GetRequestedRendererSize(),
@@ -572,8 +549,9 @@ OffScreenRenderWidgetHostView::CreateViewForWidget(
   }
 
   return new OffScreenRenderWidgetHostView(
-      transparent_, true, embedder_host_view->frame_rate(), callback_,
-      render_widget_host, embedder_host_view, size());
+      transparent_, offscreen_use_shared_texture_, true,
+      embedder_host_view->frame_rate(), callback_, render_widget_host,
+      embedder_host_view, size());
 }
 
 const viz::FrameSinkId& OffScreenRenderWidgetHostView::GetFrameSinkId() const {
@@ -582,13 +560,13 @@ const viz::FrameSinkId& OffScreenRenderWidgetHostView::GetFrameSinkId() const {
 
 void OffScreenRenderWidgetHostView::DidNavigate() {
   ResizeRootLayer(true);
-  if (delegated_frame_host_)
-    delegated_frame_host_->DidNavigate();
+  if (delegated_frame_host())
+    delegated_frame_host()->DidNavigate();
 }
 
 bool OffScreenRenderWidgetHostView::TransformPointToCoordSpaceForView(
     const gfx::PointF& point,
-    RenderWidgetHostViewBase* target_view,
+    RenderWidgetHostViewInput* target_view,
     gfx::PointF* transformed_point) {
   if (target_view == this) {
     *transformed_point = point;
@@ -673,22 +651,6 @@ bool OffScreenRenderWidgetHostView::InstallTransparency() {
 }
 
 #if BUILDFLAG(IS_MAC)
-void OffScreenRenderWidgetHostView::SetActive(bool active) {}
-
-void OffScreenRenderWidgetHostView::ShowDefinitionForSelection() {}
-
-void OffScreenRenderWidgetHostView::SpeakSelection() {}
-
-void OffScreenRenderWidgetHostView::SetWindowFrameInScreen(
-    const gfx::Rect& rect) {}
-
-void OffScreenRenderWidgetHostView::ShowSharePicker(
-    const std::string& title,
-    const std::string& text,
-    const std::string& url,
-    const std::vector<std::string>& file_paths,
-    blink::mojom::ShareService::ShareCallback callback) {}
-
 bool OffScreenRenderWidgetHostView::UpdateNSViewAndDisplay() {
   return false;
 }
@@ -698,8 +660,15 @@ uint64_t OffScreenRenderWidgetHostView::GetNSViewId() const {
 }
 #endif
 
-void OffScreenRenderWidgetHostView::OnPaint(const gfx::Rect& damage_rect,
-                                            const SkBitmap& bitmap) {
+void OffScreenRenderWidgetHostView::OnPaint(
+    const gfx::Rect& damage_rect,
+    const SkBitmap& bitmap,
+    const OffscreenSharedTexture& texture) {
+  if (texture.has_value()) {
+    callback_.Run(damage_rect, {}, texture);
+    return;
+  }
+
   backing_ = std::make_unique<SkBitmap>();
   backing_->allocN32Pixels(bitmap.width(), bitmap.height(), !transparent_);
   bitmap.readPixels(backing_->pixmap());
@@ -755,7 +724,7 @@ void OffScreenRenderWidgetHostView::CompositeFrame(
   }
 
   callback_.Run(gfx::IntersectRects(gfx::Rect(size_in_pixels), damage_rect),
-                frame);
+                frame, {});
 
   ReleaseResize();
 }
@@ -948,7 +917,7 @@ void OffScreenRenderWidgetHostView::SetFrameRate(int frame_rate) {
   } else {
     if (frame_rate <= 0)
       frame_rate = 1;
-    if (frame_rate > 240)
+    if (!offscreen_use_shared_texture_ && frame_rate > 240)
       frame_rate = 240;
 
     frame_rate_ = frame_rate;
@@ -1038,7 +1007,8 @@ void OffScreenRenderWidgetHostView::ResizeRootLayer(bool force) {
 
 viz::FrameSinkId OffScreenRenderWidgetHostView::AllocateFrameSinkId() {
   return viz::FrameSinkId(
-      base::checked_cast<uint32_t>(render_widget_host_->GetProcess()->GetID()),
+      base::checked_cast<uint32_t>(
+          render_widget_host_->GetProcess()->GetDeprecatedID()),
       base::checked_cast<uint32_t>(render_widget_host_->GetRoutingID()));
 }
 
@@ -1048,8 +1018,6 @@ void OffScreenRenderWidgetHostView::UpdateBackgroundColorFromRenderer(
     return;
   background_color_ = color;
 
-  bool opaque = SkColorGetA(color) == SK_AlphaOPAQUE;
-  root_layer()->SetFillsBoundsOpaquely(opaque);
   root_layer()->SetColor(color);
 }
 

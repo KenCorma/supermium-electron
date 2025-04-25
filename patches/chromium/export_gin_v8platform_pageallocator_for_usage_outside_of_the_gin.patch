@@ -9,7 +9,7 @@ correctly tagged with MAP_JIT we need to use gins page allocator instead
 of the default V8 allocator.  This probably can't be usptreamed.
 
 diff --git a/gin/public/v8_platform.h b/gin/public/v8_platform.h
-index cec5e3b283343586ba846a4ce58fee34e8542164..09ec66b75113d6a934d51ee5aad684281be61e8f 100644
+index c34f34146d0aab681318b64ac33081bdc21ce7d6..11cdf6c34d8f79fcf293f59785e586dc8363b983 100644
 --- a/gin/public/v8_platform.h
 +++ b/gin/public/v8_platform.h
 @@ -32,6 +32,7 @@ class GIN_EXPORT V8Platform : public v8::Platform {
@@ -17,16 +17,16 @@ index cec5e3b283343586ba846a4ce58fee34e8542164..09ec66b75113d6a934d51ee5aad68428
    // verified in the tests for gin::PageAllocator.
    PageAllocator* GetPageAllocator() override;
 +  static PageAllocator* GetCurrentPageAllocator();
- #if BUILDFLAG(ENABLE_THREAD_ISOLATION)
+ #if PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
    ThreadIsolatedAllocator* GetThreadIsolatedAllocator() override;
  #endif
 diff --git a/gin/v8_platform.cc b/gin/v8_platform.cc
-index 4ef8837994dddd313a71534012dcedf5f080604e..83503d6ae5a989ff46306abfb0b991eeeed48326 100644
+index fa799a4cc32950ce03c154bc7791341d96a17f67..b8ec81b79b6129a7e26a2ffecf535fdedea8ed6c 100644
 --- a/gin/v8_platform.cc
 +++ b/gin/v8_platform.cc
-@@ -334,6 +334,10 @@ ThreadIsolatedAllocator* V8Platform::GetThreadIsolatedAllocator() {
+@@ -204,6 +204,10 @@ ThreadIsolatedAllocator* V8Platform::GetThreadIsolatedAllocator() {
  }
- #endif  // BUILDFLAG(ENABLE_THREAD_ISOLATION)
+ #endif  // PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
  
 +PageAllocator* V8Platform::GetCurrentPageAllocator() {
 +  return g_page_allocator.Pointer();

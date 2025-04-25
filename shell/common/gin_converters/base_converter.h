@@ -5,6 +5,7 @@
 #ifndef ELECTRON_SHELL_COMMON_GIN_CONVERTERS_BASE_CONVERTER_H_
 #define ELECTRON_SHELL_COMMON_GIN_CONVERTERS_BASE_CONVERTER_H_
 
+#include "base/containers/flat_set.h"
 #include "base/process/kill.h"
 #include "gin/converter.h"
 #include "shell/common/gin_converters/std_converter.h"
@@ -36,10 +37,16 @@ struct Converter<base::TerminationStatus> {
 #endif
       case base::TERMINATION_STATUS_MAX_ENUM:
         NOTREACHED();
-        return gin::ConvertToV8(isolate, "");
     }
     NOTREACHED();
-    return gin::ConvertToV8(isolate, "");
+  }
+};
+
+template <typename T>
+struct Converter<base::flat_set<T>> {
+  static v8::Local<v8::Value> ToV8(v8::Isolate* isolate,
+                                   const base::flat_set<T>& set) {
+    return Converter<std::span<T>>::ToV8(isolate, std::span{set});
   }
 };
 

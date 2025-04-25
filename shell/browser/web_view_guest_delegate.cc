@@ -31,8 +31,9 @@ void WebViewGuestDelegate::AttachToIframe(
     int embedder_frame_id) {
   embedder_web_contents_ = embedder_web_contents;
 
-  int embedder_process_id =
-      embedder_web_contents_->GetPrimaryMainFrame()->GetProcess()->GetID();
+  int embedder_process_id = embedder_web_contents_->GetPrimaryMainFrame()
+                                ->GetProcess()
+                                ->GetDeprecatedID();
   auto* embedder_frame =
       content::RenderFrameHost::FromID(embedder_process_id, embedder_frame_id);
   DCHECK_EQ(embedder_web_contents_,
@@ -46,8 +47,6 @@ void WebViewGuestDelegate::AttachToIframe(
   embedder_web_contents_->AttachInnerWebContents(
       base::WrapUnique<content::WebContents>(guest_web_contents),
       embedder_frame,
-      /*remote_frame=*/mojo::NullAssociatedRemote(),
-      /*remote_frame_host_receiver=*/mojo::NullAssociatedReceiver(),
       /*is_full_page=*/false);
 
   ResetZoomController();
@@ -76,13 +75,13 @@ void WebViewGuestDelegate::OnZoomChanged(
     if (data.temporary) {
       zoom_controller->SetTemporaryZoomLevel(data.new_zoom_level);
     } else {
-      if (blink::PageZoomValuesEqual(data.new_zoom_level,
-                                     zoom_controller->GetZoomLevel()))
+      if (blink::ZoomValuesEqual(data.new_zoom_level,
+                                 zoom_controller->GetZoomLevel()))
         return;
       zoom_controller->SetZoomLevel(data.new_zoom_level);
     }
     // Change the default zoom factor to match the embedders' new zoom level.
-    double zoom_factor = blink::PageZoomLevelToZoomFactor(data.new_zoom_level);
+    double zoom_factor = blink::ZoomLevelToZoomFactor(data.new_zoom_level);
     zoom_controller->SetDefaultZoomFactor(zoom_factor);
   }
 }

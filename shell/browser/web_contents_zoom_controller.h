@@ -7,7 +7,6 @@
 
 #include "base/memory/raw_ptr.h"
 #include "base/observer_list.h"
-#include "base/observer_list_types.h"
 #include "content/public/browser/host_zoom_map.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
@@ -18,7 +17,7 @@ class WebContentsZoomObserver;
 
 // Manages the zoom changes of WebContents.
 class WebContentsZoomController
-    : public content::WebContentsObserver,
+    : private content::WebContentsObserver,
       public content::WebContentsUserData<WebContentsZoomController> {
  public:
   // Defines how zoom changes are handled.

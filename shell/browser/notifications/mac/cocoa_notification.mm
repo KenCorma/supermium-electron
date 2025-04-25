@@ -10,10 +10,14 @@
 #include "base/logging.h"
 #include "base/mac/mac_util.h"
 #include "base/strings/sys_string_conversions.h"
-#include "base/strings/utf_string_conversions.h"
 #include "shell/browser/notifications/notification_delegate.h"
 #include "shell/browser/notifications/notification_presenter.h"
 #include "skia/ext/skia_utils_mac.h"
+
+// NSUserNotification is deprecated; we need to use the
+// UserNotifications.frameworks API instead
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
 namespace electron {
 
@@ -40,7 +44,7 @@ void CocoaNotification::Show(const NotificationOptions& options) {
   [notification_ setInformativeText:base::SysUTF16ToNSString(options.msg)];
   [notification_ setIdentifier:identifier];
 
-  if (getenv("ELECTRON_DEBUG_NOTIFICATIONS")) {
+  if (electron::debug_notifications) {
     LOG(INFO) << "Notification created (" << [identifier UTF8String] << ")";
   }
 
@@ -166,7 +170,7 @@ void CocoaNotification::NotificationDismissed() {
 }
 
 void CocoaNotification::LogAction(const char* action) {
-  if (getenv("ELECTRON_DEBUG_NOTIFICATIONS") && notification_) {
+  if (electron::debug_notifications && notification_) {
     NSString* identifier = [notification_ valueForKey:@"identifier"];
     DCHECK(identifier);
     LOG(INFO) << "Notification " << action << " (" << [identifier UTF8String]

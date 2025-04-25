@@ -27,7 +27,7 @@ class WinCaptionButton;
 // frame and browser window as needed. When extended horizontally, becomes a
 // grab bar for moving the window.
 class WinCaptionButtonContainer : public views::View,
-                                  public views::WidgetObserver {
+                                  private views::WidgetObserver {
   METADATA_HEADER(WinCaptionButtonContainer, views::View)
 
  public:
@@ -42,8 +42,10 @@ class WinCaptionButtonContainer : public views::View,
   // See also ClientView::NonClientHitTest.
   int NonClientHitTest(const gfx::Point& point) const;
 
-  gfx::Size GetButtonSize() const;
   void SetButtonSize(gfx::Size size);
+
+  // Add tooltip text to caption buttons.
+  void UpdateButtonToolTipsForWindowControlsOverlay();
 
   // Sets caption button container background color.
   void UpdateBackground();

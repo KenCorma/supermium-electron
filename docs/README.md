@@ -21,7 +21,6 @@ an issue:
 ### Getting started
 
 * [Introduction](tutorial/introduction.md)
-* [Quick Start](tutorial/quick-start.md)
 * [Process Model](tutorial/process-model.md)
 
 ### Learning the basics
@@ -37,6 +36,7 @@ an issue:
   * [Offline/Online Detection](tutorial/online-offline-events.md)
   * [Represented File for macOS BrowserWindows](tutorial/represented-file.md)
   * [Native File Drag & Drop](tutorial/native-file-drag-drop.md)
+  * [Navigation History](tutorial/navigation-history.md)
   * [Offscreen Rendering](tutorial/offscreen-rendering.md)
   * [Dark Mode](tutorial/dark-mode.md)
   * [Web embeds in Electron](tutorial/web-embeds.md)
@@ -98,7 +98,6 @@ These individual tutorials expand on topics discussed in the guide above.
 
 ### Custom DOM Elements:
 
-* [`File` Object](api/file-object.md)
 * [`<webview>` Tag](api/webview-tag.md)
 * [`window.open` Function](api/window-open.md)
 
@@ -128,6 +127,7 @@ These individual tutorials expand on topics discussed in the guide above.
 * [pushNotifications](api/push-notifications.md)
 * [safeStorage](api/safe-storage.md)
 * [screen](api/screen.md)
+* [ServiceWorkerMain](api/service-worker-main.md)
 * [session](api/session.md)
 * [ShareMenu](api/share-menu.md)
 * [systemPreferences](api/system-preferences.md)

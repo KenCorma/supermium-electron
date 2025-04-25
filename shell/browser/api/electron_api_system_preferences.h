@@ -9,17 +9,23 @@
 #include <string>
 
 #include "base/values.h"
-#include "gin/handle.h"
 #include "gin/wrappable.h"
 #include "shell/browser/event_emitter_mixin.h"
-#include "shell/common/gin_helper/error_thrower.h"
-#include "shell/common/gin_helper/promise.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "shell/browser/browser.h"
 #include "shell/browser/browser_observer.h"
 #include "ui/gfx/sys_color_change_listener.h"
 #endif
+
+namespace gin {
+template <typename T>
+class Handle;
+}  // namespace gin
+
+namespace gin_helper {
+class ErrorThrower;
+}  // namespace gin_helper
 
 namespace electron::api {
 
@@ -31,7 +37,7 @@ enum class NotificationCenterKind {
 };
 #endif
 
-class SystemPreferences
+class SystemPreferences final
     : public gin::Wrappable<SystemPreferences>,
       public gin_helper::EventEmitterMixin<SystemPreferences>
 #if BUILDFLAG(IS_WIN)
@@ -57,8 +63,6 @@ class SystemPreferences
                                    const std::string& media_type);
 #endif
 #if BUILDFLAG(IS_WIN)
-  bool IsAeroGlassEnabled();
-
   void InitializeWindow();
 
   // gfx::SysColorChangeListener:

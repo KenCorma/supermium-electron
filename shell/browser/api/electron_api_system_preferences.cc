@@ -4,14 +4,13 @@
 
 #include "shell/browser/api/electron_api_system_preferences.h"
 
+#include "gin/handle.h"
 #include "shell/common/gin_converters/callback_converter.h"
 #include "shell/common/gin_converters/value_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
-#include "shell/common/gin_helper/function_template_extensions.h"
+#include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/node_includes.h"
 #include "ui/gfx/animation/animation.h"
-#include "ui/gfx/color_utils.h"
-#include "ui/native_theme/native_theme.h"
 
 namespace electron::api {
 
@@ -61,9 +60,7 @@ gin::ObjectTemplateBuilder SystemPreferences::GetObjectTemplateBuilder(
                  &SystemPreferences::GetMediaAccessStatus)
 #endif
 
-#if BUILDFLAG(IS_WIN)
-      .SetMethod("isAeroGlassEnabled", &SystemPreferences::IsAeroGlassEnabled)
-#elif BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_MAC)
       .SetMethod("postNotification", &SystemPreferences::PostNotification)
       .SetMethod("subscribeNotification",
                  &SystemPreferences::SubscribeNotification)

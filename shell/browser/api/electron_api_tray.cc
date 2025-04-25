@@ -9,6 +9,7 @@
 
 #include "base/containers/fixed_flat_map.h"
 #include "gin/dictionary.h"
+#include "gin/handle.h"
 #include "gin/object_template_builder.h"
 #include "shell/browser/api/electron_api_menu.h"
 #include "shell/browser/api/ui_event.h"
@@ -20,9 +21,8 @@
 #include "shell/common/gin_converters/guid_converter.h"
 #include "shell/common/gin_converters/image_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
-#include "shell/common/gin_helper/function_template_extensions.h"
+#include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/node_includes.h"
-#include "ui/gfx/image/image.h"
 
 namespace gin {
 
@@ -67,13 +67,13 @@ gin::Handle<Tray> Tray::New(gin_helper::ErrorThrower thrower,
                             gin::Arguments* args) {
   if (!Browser::Get()->is_ready()) {
     thrower.ThrowError("Cannot create Tray before app is ready");
-    return gin::Handle<Tray>();
+    return {};
   }
 
 #if BUILDFLAG(IS_WIN)
   if (!guid.has_value() && args->Length() > 1) {
     thrower.ThrowError("Invalid GUID format");
-    return gin::Handle<Tray>();
+    return {};
   }
 #endif
 
@@ -85,7 +85,7 @@ gin::Handle<Tray> Tray::New(gin_helper::ErrorThrower thrower,
   if (try_catch.HasCaught()) {
     delete tray;
     try_catch.ReThrow();
-    return gin::Handle<Tray>();
+    return {};
   }
 
   auto handle = gin::CreateHandle(args->isolate(), tray);
@@ -264,7 +264,7 @@ void Tray::SetTitle(const std::string& title,
 
 std::string Tray::GetTitle() {
   if (!CheckAlive())
-    return std::string();
+    return {};
 #if BUILDFLAG(IS_MAC)
   return tray_icon_->GetTitle();
 #else
@@ -388,7 +388,7 @@ void Tray::SetContextMenu(gin_helper::ErrorThrower thrower,
 
 gfx::Rect Tray::GetBounds() {
   if (!CheckAlive())
-    return gfx::Rect();
+    return {};
   return tray_icon_->GetBounds();
 }
 
@@ -429,6 +429,10 @@ void Tray::FillObjectTemplate(v8::Isolate* isolate,
 
 const char* Tray::GetTypeName() {
   return GetClassName();
+}
+
+void Tray::WillBeDestroyed() {
+  ClearWeak();
 }
 
 }  // namespace electron::api

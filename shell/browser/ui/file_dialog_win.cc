@@ -16,13 +16,14 @@
 
 #include "base/files/file_util.h"
 #include "base/i18n/case_conversion.h"
-#include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/win/registry.h"
 #include "shell/browser/native_window_views.h"
 #include "shell/browser/ui/win/dialog_thread.h"
 #include "shell/common/gin_converters/file_path_converter.h"
+#include "shell/common/gin_helper/dictionary.h"
+#include "shell/common/gin_helper/promise.h"
 
 namespace file_dialog {
 
@@ -78,7 +79,6 @@ static HRESULT GetFileNameFromShellItem(IShellItem* pShellItem,
       wcscpy_s(lpstr, cchLength, lpstrName);
     } else {
       NOTREACHED();
-      hRet = DISP_E_BUFFERTOOSMALL;
     }
 
     ::CoTaskMemFree(lpstrName);
@@ -144,10 +144,14 @@ static void ApplySettings(IFileDialog* dialog, const DialogSettings& settings) {
   // We set file extension to the first none-wildcard extension to make
   // sure the dialog will update file extension automatically.
   for (size_t i = 0; i < filterspec.size(); ++i) {
-    if (std::wstring(filterspec[i].pszSpec) != L"*.*") {
+    std::wstring spec(filterspec[i].pszSpec);
+    if (spec != L"*.*") {
       // SetFileTypeIndex is regarded as one-based index.
       dialog->SetFileTypeIndex(i + 1);
-      dialog->SetDefaultExtension(filterspec[i].pszSpec);
+      // "*.jpg;*.png" => "*.jpg"
+      std::wstring first_spec = spec.substr(0, spec.find(L';'));
+      // "*.jpg" => "jpg"
+      dialog->SetDefaultExtension(first_spec.substr(2).c_str());
       break;
     }
   }

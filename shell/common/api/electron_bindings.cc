@@ -10,16 +10,18 @@
 #include <vector>
 
 #include "base/containers/contains.h"
-#include "base/logging.h"
+#include "base/files/file.h"
 #include "base/process/process.h"
 #include "base/process/process_handle.h"
 #include "base/system/sys_info.h"
+#include "electron/mas.h"
 #include "services/resource_coordinator/public/cpp/memory_instrumentation/global_memory_dump.h"
 #include "services/resource_coordinator/public/cpp/memory_instrumentation/memory_instrumentation.h"
 #include "shell/browser/browser.h"
 #include "shell/common/application_info.h"
 #include "shell/common/gin_converters/file_path_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
+#include "shell/common/gin_helper/locker.h"
 #include "shell/common/gin_helper/microtasks_scope.h"
 #include "shell/common/gin_helper/promise.h"
 #include "shell/common/heap_snapshot.h"
@@ -83,10 +85,7 @@ void ElectronBindings::BindTo(v8::Isolate* isolate,
 }
 
 void ElectronBindings::EnvironmentDestroyed(node::Environment* env) {
-  auto it =
-      std::find(pending_next_ticks_.begin(), pending_next_ticks_.end(), env);
-  if (it != pending_next_ticks_.end())
-    pending_next_ticks_.erase(it);
+  std::erase(pending_next_ticks_, env);
 }
 
 void ElectronBindings::ActivateUVLoop(v8::Isolate* isolate) {
@@ -241,8 +240,7 @@ void ElectronBindings::DidReceiveMemoryDump(
   v8::Local<v8::Context> local_context =
       v8::Local<v8::Context>::New(isolate, context);
   gin_helper::MicrotasksScope microtasks_scope{
-      isolate, local_context->GetMicrotaskQueue(), true,
-      v8::MicrotasksScope::kRunMicrotasks};
+      local_context, true, v8::MicrotasksScope::kRunMicrotasks};
   v8::Context::Scope context_scope(local_context);
 
   if (!success) {
@@ -278,8 +276,15 @@ v8::Local<v8::Value> ElectronBindings::GetCPUUsage(
     v8::Isolate* isolate) {
   auto dict = gin_helper::Dictionary::CreateEmpty(isolate);
   int processor_count = base::SysInfo::NumberOfProcessors();
-  std::optional<double> usage = metrics->GetPlatformIndependentCPUUsage();
-  dict.Set("percentCPUUsage", usage.value_or(0) / processor_count);
+
+  // Default usage percentage to 0 for compatibility
+  double usagePercent = 0;
+  if (auto usage = metrics->GetCumulativeCPUUsage(); usage.has_value()) {
+    dict.Set("cumulativeCPUUsage", usage->InSecondsF());
+    usagePercent = metrics->GetPlatformIndependentCPUUsage(*usage);
+  }
+
+  dict.Set("percentCPUUsage", usagePercent / processor_count);
 
   // NB: This will throw NOTIMPLEMENTED() on Windows
   // For backwards compatibility, we'll return 0

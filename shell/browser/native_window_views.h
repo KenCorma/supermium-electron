@@ -9,11 +9,11 @@
 
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 
 #include "base/memory/raw_ptr.h"
 #include "shell/browser/ui/views/root_view.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #include "ui/base/ozone_buildflags.h"
 #include "ui/views/controls/webview/unhandled_keyboard_event_handler.h"
 #include "ui/views/widget/widget_observer.h"
@@ -38,8 +38,8 @@ gfx::Rect ScreenToDIPRect(HWND hwnd, const gfx::Rect& pixel_bounds);
 #endif
 
 class NativeWindowViews : public NativeWindow,
-                          public views::WidgetObserver,
-                          public ui::EventHandler {
+                          private views::WidgetObserver,
+                          private ui::EventHandler {
  public:
   NativeWindowViews(const gin_helper::Dictionary& options,
                     NativeWindow* parent);
@@ -102,7 +102,7 @@ class NativeWindowViews : public NativeWindow,
   std::string GetTitle() const override;
   void FlashFrame(bool flash) override;
   void SetSkipTaskbar(bool skip) override;
-  void SetExcludedFromShownWindowsMenu(bool excluded) override;
+  void SetExcludedFromShownWindowsMenu(bool excluded) override {}
   bool IsExcludedFromShownWindowsMenu() const override;
   void SetSimpleFullScreen(bool simple_fullscreen) override;
   bool IsSimpleFullScreen() const override;
@@ -116,6 +116,7 @@ class NativeWindowViews : public NativeWindow,
   double GetOpacity() const override;
   void SetIgnoreMouseEvents(bool ignore, bool forward) override;
   void SetContentProtection(bool enable) override;
+  bool IsContentProtected() const override;
   void SetFocusable(bool focusable) override;
   bool IsFocusable() const override;
   void SetMenu(ElectronMenuModel* menu_model) override;
@@ -202,11 +203,9 @@ class NativeWindowViews : public NativeWindow,
   void OnWidgetMove() override;
 #if BUILDFLAG(IS_WIN)
   bool ExecuteWindowsCommand(int command_id) override;
-#endif
-
-#if BUILDFLAG(IS_WIN)
   void HandleSizeEvent(WPARAM w_param, LPARAM l_param);
   void ResetWindowControls();
+  void SetRoundedCorners(bool rounded);
   void SetForwardMouseMessages(bool forward);
   static LRESULT CALLBACK SubclassProc(HWND hwnd,
                                        UINT msg,
@@ -224,15 +223,14 @@ class NativeWindowViews : public NativeWindow,
   void SetEnabledInternal(bool enabled);
 
   // NativeWindow:
-  void HandleKeyboardEvent(
-      content::WebContents*,
-      const content::NativeWebKeyboardEvent& event) override;
+  void HandleKeyboardEvent(content::WebContents*,
+                           const input::NativeWebKeyboardEvent& event) override;
 
   // ui::EventHandler:
   void OnMouseEvent(ui::MouseEvent* event) override;
 
   // Returns the restore state for the window.
-  ui::WindowShowState GetRestoredState();
+  ui::mojom::WindowShowState GetRestoredState();
 
   // Maintain window placement.
   void MoveBehindTaskBarIfNeeded();
@@ -263,7 +261,7 @@ class NativeWindowViews : public NativeWindow,
 
 #if BUILDFLAG(IS_WIN)
 
-  ui::WindowShowState last_window_state_;
+  ui::mojom::WindowShowState last_window_state_;
 
   gfx::Rect last_normal_placement_bounds_;
 
@@ -280,11 +278,11 @@ class NativeWindowViews : public NativeWindow,
   gfx::Rect restore_bounds_;
 
   // The icons of window and taskbar.
-  base::win::ScopedHICON window_icon_;
-  base::win::ScopedHICON app_icon_;
+  base::win::ScopedGDIObject<HICON> window_icon_;
+  base::win::ScopedGDIObject<HICON> app_icon_;
 
   // The set of windows currently forwarding mouse messages.
-  static std::set<NativeWindowViews*> forwarding_windows_;
+  static inline absl::flat_hash_set<NativeWindowViews*> forwarding_windows_;
   static HHOOK mouse_hook_;
   bool forwarding_mouse_messages_ = false;
   HWND legacy_window_ = nullptr;

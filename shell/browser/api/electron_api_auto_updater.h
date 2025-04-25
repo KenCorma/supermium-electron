@@ -7,18 +7,22 @@
 
 #include <string>
 
-#include "gin/handle.h"
 #include "gin/wrappable.h"
 #include "shell/browser/auto_updater.h"
 #include "shell/browser/event_emitter_mixin.h"
 #include "shell/browser/window_list_observer.h"
 
+namespace gin {
+template <typename T>
+class Handle;
+}  // namespace gin
+
 namespace electron::api {
 
-class AutoUpdater : public gin::Wrappable<AutoUpdater>,
-                    public gin_helper::EventEmitterMixin<AutoUpdater>,
-                    public auto_updater::Delegate,
-                    public WindowListObserver {
+class AutoUpdater final : public gin::Wrappable<AutoUpdater>,
+                          public gin_helper::EventEmitterMixin<AutoUpdater>,
+                          public auto_updater::Delegate,
+                          private WindowListObserver {
  public:
   static gin::Handle<AutoUpdater> Create(v8::Isolate* isolate);
 
@@ -36,7 +40,7 @@ class AutoUpdater : public gin::Wrappable<AutoUpdater>,
   AutoUpdater();
   ~AutoUpdater() override;
 
-  // Delegate implementations.
+  // auto_updater::Delegate:
   void OnError(const std::string& message) override;
   void OnError(const std::string& message,
                const int code,

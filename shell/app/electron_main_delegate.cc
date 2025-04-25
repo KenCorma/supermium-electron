@@ -18,7 +18,6 @@
 #include "base/files/file_util.h"
 #include "base/logging.h"
 #include "base/path_service.h"
-#include "base/strings/string_split.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/content_settings/core/common/content_settings_pattern.h"
@@ -26,6 +25,7 @@
 #include "content/public/common/content_switches.h"
 #include "electron/buildflags/buildflags.h"
 #include "electron/fuses.h"
+#include "electron/mas.h"
 #include "extensions/common/constants.h"
 #include "ipc/ipc_buildflags.h"
 #include "sandbox/policy/switches.h"
@@ -79,7 +79,7 @@ namespace electron {
 
 namespace {
 
-const char kRelauncherProcess[] = "relauncher";
+constexpr std::string_view kRelauncherProcess = "relauncher";
 
 constexpr std::string_view kElectronDisableSandbox{"ELECTRON_DISABLE_SANDBOX"};
 constexpr std::string_view kElectronEnableStackDumping{
@@ -98,7 +98,6 @@ bool SubprocessNeedsResourceBundle(const std::string& process_type) {
       // profiles.
       process_type == ::switches::kGpuProcess ||
 #endif
-      process_type == ::switches::kPpapiPluginProcess ||
       process_type == ::switches::kRendererProcess ||
       process_type == ::switches::kUtilityProcess;
 }
@@ -272,12 +271,6 @@ std::optional<int> ElectronMainDelegate::BasicStartupComplete() {
       kNonWildcardDomainNonPortSchemes, kNonWildcardDomainNonPortSchemesSize);
 #endif
 
-#if BUILDFLAG(IS_MAC)
-  OverrideChildProcessPath();
-  OverrideFrameworkBundlePath();
-  SetUpBundleOverrides();
-#endif
-
 #if BUILDFLAG(IS_WIN)
   // Ignore invalid parameter errors.
   _set_invalid_parameter_handler(InvalidParameterHandler);
@@ -409,10 +402,15 @@ std::optional<int> ElectronMainDelegate::PreBrowserMain() {
 #if BUILDFLAG(IS_MAC)
   RegisterAtomCrApp();
 #endif
+#if BUILDFLAG(IS_LINUX)
+  // Set the global activation token sent as an environment variable.
+  auto env = base::Environment::Create();
+  base::nix::ExtractXdgActivationTokenFromEnv(*env);
+#endif
   return std::nullopt;
 }
 
-base::StringPiece ElectronMainDelegate::GetBrowserV8SnapshotFilename() {
+std::string_view ElectronMainDelegate::GetBrowserV8SnapshotFilename() {
   bool load_browser_process_specific_v8_snapshot =
       IsBrowserProcess() &&
       electron::fuses::IsLoadBrowserProcessSpecificV8SnapshotEnabled();

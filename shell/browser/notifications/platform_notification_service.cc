@@ -4,7 +4,6 @@
 
 #include "shell/browser/notifications/platform_notification_service.h"
 
-#include "base/strings/utf_string_conversions.h"
 #include "content/public/browser/notification_event_dispatcher.h"
 #include "content/public/browser/render_process_host.h"
 #include "shell/browser/electron_browser_client.h"
@@ -53,6 +52,7 @@ class NotificationDelegateImpl final : public electron::NotificationDelegate {
   NotificationDelegateImpl(const NotificationDelegateImpl&) = delete;
   NotificationDelegateImpl& operator=(const NotificationDelegateImpl&) = delete;
 
+  // electron::NotificationDelegate
   void NotificationDestroyed() override { delete this; }
 
   void NotificationClick() override {
@@ -113,16 +113,6 @@ void PlatformNotificationService::DisplayNotification(
                             notification_data));
   }
 }
-
-void PlatformNotificationService::DisplayPersistentNotification(
-    const std::string& notification_id,
-    const GURL& service_worker_scope,
-    const GURL& origin,
-    const blink::PlatformNotificationData& notification_data,
-    const blink::NotificationResources& notification_resources) {}
-
-void PlatformNotificationService::ClosePersistentNotification(
-    const std::string& notification_id) {}
 
 void PlatformNotificationService::CloseNotification(
     const std::string& notification_id) {

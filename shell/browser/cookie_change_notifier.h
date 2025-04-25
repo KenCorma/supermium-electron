@@ -8,15 +8,19 @@
 #include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
 #include "mojo/public/cpp/bindings/receiver.h"
-#include "net/cookies/cookie_change_dispatcher.h"
 #include "services/network/public/mojom/cookie_manager.mojom.h"
+
+namespace net {
+class CoookieChangeInfo;
+class CookieChangeNotifier;
+}  // namespace net
 
 namespace electron {
 
 class ElectronBrowserContext;
 
 // Sends cookie-change notifications on the UI thread.
-class CookieChangeNotifier : public network::mojom::CookieChangeListener {
+class CookieChangeNotifier : private network::mojom::CookieChangeListener {
  public:
   explicit CookieChangeNotifier(ElectronBrowserContext* browser_context);
   ~CookieChangeNotifier() override;

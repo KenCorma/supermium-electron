@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
@@ -14,21 +15,25 @@
 #include "base/sequence_checker.h"
 #include "gin/wrappable.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
-#include "net/base/auth.h"
 #include "services/network/public/cpp/simple_url_loader_stream_consumer.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "services/network/public/mojom/url_loader_factory.mojom-forward.h"
 #include "services/network/public/mojom/url_loader_network_service_observer.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "shell/browser/event_emitter_mixin.h"
+#include "shell/common/gin_helper/cleaned_up_at_exit.h"
 #include "url/gurl.h"
-#include "v8/include/v8.h"
+#include "v8/include/v8-forward.h"
 
 namespace gin {
 class Arguments;
 template <typename T>
 class Handle;
 }  // namespace gin
+
+namespace net {
+class AuthChallengeInfo;
+}  // namespace net
 
 namespace network {
 class SimpleURLLoader;
@@ -43,11 +48,12 @@ class ElectronBrowserContext;
 namespace electron::api {
 
 /** Wraps a SimpleURLLoader to make it usable from JavaScript */
-class SimpleURLLoaderWrapper
+class SimpleURLLoaderWrapper final
     : public gin::Wrappable<SimpleURLLoaderWrapper>,
       public gin_helper::EventEmitterMixin<SimpleURLLoaderWrapper>,
-      public network::SimpleURLLoaderStreamConsumer,
-      public network::mojom::URLLoaderNetworkServiceObserver {
+      public gin_helper::CleanedUpAtExit,
+      private network::SimpleURLLoaderStreamConsumer,
+      private network::mojom::URLLoaderNetworkServiceObserver {
  public:
   ~SimpleURLLoaderWrapper() override;
   static gin::Handle<SimpleURLLoaderWrapper> Create(gin::Arguments* args);
@@ -60,21 +66,24 @@ class SimpleURLLoaderWrapper
       v8::Isolate* isolate) override;
   const char* GetTypeName() override;
 
+  // gin_helper::CleanedUpAtExit
+  void WillBeDestroyed() override;
+
  private:
   SimpleURLLoaderWrapper(ElectronBrowserContext* browser_context,
                          std::unique_ptr<network::ResourceRequest> request,
                          int options);
 
   // SimpleURLLoaderStreamConsumer:
-  void OnDataReceived(base::StringPiece string_piece,
+  void OnDataReceived(std::string_view string_view,
                       base::OnceClosure resume) override;
   void OnComplete(bool success) override;
-  void OnRetry(base::OnceClosure start_retry) override;
+  void OnRetry(base::OnceClosure start_retry) override {}
 
   // network::mojom::URLLoaderNetworkServiceObserver:
   void OnAuthRequired(
       const std::optional<base::UnguessableToken>& window_id,
-      uint32_t request_id,
+      int32_t request_id,
       const GURL& url,
       bool first_auth_attempt,
       const net::AuthChallengeInfo& auth_info,
@@ -108,7 +117,9 @@ class SimpleURLLoaderWrapper
                             OnLoadingStateUpdateCallback callback) override;
   void OnSharedStorageHeaderReceived(
       const url::Origin& request_origin,
-      std::vector<network::mojom::SharedStorageOperationPtr> operations,
+      std::vector<network::mojom::SharedStorageModifierMethodWithOptionsPtr>
+          methods,
+      const std::optional<std::string>& with_lock,
       OnSharedStorageHeaderReceivedCallback callback) override;
   void OnDataUseUpdate(int32_t network_traffic_annotation_id_hash,
                        int64_t recv_bytes,
@@ -118,6 +129,11 @@ class SimpleURLLoaderWrapper
   void Clone(
       mojo::PendingReceiver<network::mojom::URLLoaderNetworkServiceObserver>
           observer) override;
+  void OnUrlLoaderConnectedToPrivateNetwork(
+      const GURL& request_url,
+      network::mojom::IPAddressSpace response_address_space,
+      network::mojom::IPAddressSpace client_address_space,
+      network::mojom::IPAddressSpace target_address_space) override {}
 
   scoped_refptr<network::SharedURLLoaderFactory> GetURLLoaderFactoryForURL(
       const GURL& url);

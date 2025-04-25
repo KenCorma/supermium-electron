@@ -13,13 +13,10 @@
 #include <shlobj.h>
 #include <wrl\wrappers\corewrappers.h>
 
-#include "base/environment.h"
 #include "base/hash/hash.h"
 #include "base/logging.h"
 #include "base/strings/strcat.h"
-#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util_win.h"
-#include "base/strings/utf_string_conversions.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "shell/browser/notifications/notification_delegate.h"
@@ -68,12 +65,12 @@ namespace {
 constexpr wchar_t kGroup[] = L"Notifications";
 
 void DebugLog(std::string_view log_msg) {
-  if (base::Environment::Create()->HasVar("ELECTRON_DEBUG_NOTIFICATIONS"))
+  if (electron::debug_notifications)
     LOG(INFO) << log_msg;
 }
 
-std::wstring GetTag(const std::string& notification_id) {
-  return base::NumberToWString(base::Hash(notification_id));
+std::wstring GetTag(const std::string_view notification_id) {
+  return base::NumberToWString(base::FastHash(notification_id));
 }
 
 }  // namespace
@@ -545,7 +542,7 @@ HRESULT WindowsToastNotification::SetXmlImage(IXmlDocument* doc,
   ComPtr<IXmlNode> src_attr;
   RETURN_IF_FAILED(attrs->GetNamedItem(src, &src_attr));
 
-  ScopedHString img_path(icon_path.c_str());
+  const ScopedHString img_path{icon_path};
   if (!img_path.success())
     return E_FAIL;
 
@@ -666,8 +663,8 @@ IFACEMETHODIMP ToastEventHandler::Invoke(
     winui::Notifications::IToastFailedEventArgs* e) {
   HRESULT error;
   e->get_ErrorCode(&error);
-  std::string errorMessage =
-      "Notification failed. HRESULT:" + std::to_string(error);
+  std::string errorMessage = base::StrCat(
+      {"Notification failed. HRESULT:", base::NumberToString(error)});
   content::GetUIThreadTaskRunner({})->PostTask(
       FROM_HERE, base::BindOnce(&Notification::NotificationFailed,
                                 notification_, errorMessage));

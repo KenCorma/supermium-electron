@@ -10,7 +10,6 @@
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/weak_ptr.h"
-#include "base/stl_util.h"
 #include "base/timer/timer.h"
 #include "base/win/win_util.h"
 #include "base/win/windows_types.h"
@@ -212,12 +211,10 @@ NotifyIcon* NotifyIconHost::CreateNotifyIcon(std::optional<UUID> guid) {
 }
 
 void NotifyIconHost::Remove(NotifyIcon* icon) {
-  NotifyIcons::iterator i(
-      std::find(notify_icons_.begin(), notify_icons_.end(), icon));
+  const auto i = std::ranges::find(notify_icons_, icon);
 
   if (i == notify_icons_.end()) {
     NOTREACHED();
-    return;
   }
 
   mouse_entered_exited_detector_->IconRemoved(*i);
@@ -243,11 +240,7 @@ LRESULT CALLBACK NotifyIconHost::WndProc(HWND hwnd,
                                          LPARAM lparam) {
   if (message == taskbar_created_message_) {
     // We need to reset all of our icons because the taskbar went away.
-    for (NotifyIcons::const_iterator i(notify_icons_.begin());
-         i != notify_icons_.end(); ++i) {
-      auto* win_icon = static_cast<NotifyIcon*>(*i);
-      win_icon->ResetIcon();
-    }
+    std::ranges::for_each(notify_icons_, [](auto* icon) { icon->ResetIcon(); });
     return TRUE;
   } else if (message == kNotifyIconMessage) {
     NotifyIcon* win_icon = nullptr;

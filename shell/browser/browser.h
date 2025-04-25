@@ -10,19 +10,15 @@
 #include <string>
 #include <vector>
 
-#include "base/compiler_specific.h"
+#include "base/files/file_path.h"
 #include "base/observer_list.h"
 #include "base/task/cancelable_task_tracker.h"
 #include "base/values.h"
-#include "gin/dictionary.h"
-#include "shell/browser/browser_observer.h"
 #include "shell/browser/window_list_observer.h"
-#include "shell/common/gin_converters/login_item_settings_converter.h"
 #include "shell/common/gin_helper/promise.h"
 
 #if BUILDFLAG(IS_WIN)
 #include <windows.h>
-#include "base/files/file_path.h"
 #include "shell/browser/ui/win/taskbar_host.h"
 #endif
 
@@ -30,8 +26,10 @@
 #include "ui/base/cocoa/secure_password_input.h"
 #endif
 
-namespace base {
-class FilePath;
+class GURL;
+
+namespace gin {
+class Arguments;
 }
 
 namespace gin_helper {
@@ -40,6 +38,7 @@ class Arguments;
 
 namespace electron {
 
+class BrowserObserver;
 class ElectronMenuModel;
 
 #if BUILDFLAG(IS_WIN)
@@ -85,7 +84,7 @@ struct LoginItemSettings {
 };
 
 // This class is used for control application-wide operations.
-class Browser : public WindowListObserver {
+class Browser : private WindowListObserver {
  public:
   Browser();
   ~Browser() override;
@@ -314,9 +313,8 @@ class Browser : public WindowListObserver {
   // instance is destroyed.
   void SetMainMessageLoopQuitClosure(base::OnceClosure quit_closure);
 
-  void AddObserver(BrowserObserver* obs) { observers_.AddObserver(obs); }
-
-  void RemoveObserver(BrowserObserver* obs) { observers_.RemoveObserver(obs); }
+  void AddObserver(BrowserObserver* obs);
+  void RemoveObserver(BrowserObserver* obs);
 
 #if BUILDFLAG(IS_MAC)
   // Returns whether secure input is enabled

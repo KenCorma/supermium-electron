@@ -15,6 +15,7 @@
 #include <shobjidl.h>  // NOLINT(build/include_order)
 
 #include "base/base_paths.h"
+#include "base/command_line.h"
 #include "base/file_version_info.h"
 #include "base/files/file_path.h"
 #include "base/logging.h"
@@ -27,7 +28,6 @@
 #include "base/win/windows_version.h"
 #include "chrome/browser/icon_manager.h"
 #include "electron/electron_version.h"
-#include "shell/browser/api/electron_api_app.h"
 #include "shell/browser/badging/badge_manager.h"
 #include "shell/browser/electron_browser_main_parts.h"
 #include "shell/browser/javascript_environment.h"
@@ -38,7 +38,6 @@
 #include "shell/common/gin_converters/file_path_converter.h"
 #include "shell/common/gin_converters/image_converter.h"
 #include "shell/common/gin_converters/login_item_settings_converter.h"
-#include "shell/common/gin_helper/arguments.h"
 #include "shell/common/gin_helper/dictionary.h"
 #include "shell/common/skia_util.h"
 #include "shell/common/thread_restrictions.h"
@@ -96,9 +95,9 @@ bool IsValidCustomProtocol(const std::wstring& scheme) {
 // (https://docs.microsoft.com/en-us/windows/win32/api/shlwapi/ne-shlwapi-assocstr)
 // and returns the application name, icon and path that handles the protocol.
 std::wstring GetAppInfoHelperForProtocol(ASSOCSTR assoc_str, const GURL& url) {
-  const std::wstring url_scheme = base::ASCIIToWide(url.scheme());
+  const std::wstring url_scheme = base::ASCIIToWide(url.scheme_piece());
   if (!IsValidCustomProtocol(url_scheme))
-    return std::wstring();
+    return {};
 
   wchar_t out_buffer[1024];
   DWORD buffer_size = std::size(out_buffer);
@@ -107,7 +106,7 @@ std::wstring GetAppInfoHelperForProtocol(ASSOCSTR assoc_str, const GURL& url) {
                        nullptr, out_buffer, &buffer_size);
   if (FAILED(hr)) {
     DLOG(WARNING) << "AssocQueryString failed!";
-    return std::wstring();
+    return {};
   }
   return std::wstring(out_buffer);
 }
@@ -252,7 +251,7 @@ std::unique_ptr<FileVersionInfo> FetchFileVersionInfo() {
     electron::ScopedAllowBlockingForElectron allow_blocking;
     return FileVersionInfo::CreateFileVersionInfo(path);
   }
-  return std::unique_ptr<FileVersionInfo>();
+  return {};
 }
 
 }  // namespace

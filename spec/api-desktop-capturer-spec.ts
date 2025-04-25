@@ -1,9 +1,11 @@
-import { expect } from 'chai';
 import { screen, desktopCapturer, BrowserWindow } from 'electron/main';
+
+import { expect } from 'chai';
+
 import { once } from 'node:events';
 import { setTimeout } from 'node:timers/promises';
-import { ifdescribe, ifit } from './lib/spec-helpers';
 
+import { ifdescribe, ifit } from './lib/spec-helpers';
 import { closeAllWindows } from './lib/window-helpers';
 
 ifdescribe(!process.arch.includes('arm') && process.platform !== 'win32')('desktopCapturer', () => {
@@ -63,6 +65,22 @@ ifdescribe(!process.arch.includes('arm') && process.platform !== 'win32')('deskt
     for (const [i, source] of sources.entries()) {
       expect(source.display_id).to.equal(displays[i].id.toString());
     }
+  });
+
+  it('enabling thumbnail should return non-empty images', async () => {
+    const w2 = new BrowserWindow({ show: false, width: 200, height: 200, webPreferences: { contextIsolation: false } });
+    const wShown = once(w2, 'show');
+    w2.show();
+    await wShown;
+
+    const isNonEmpties: boolean[] = (await desktopCapturer.getSources({
+      types: ['window', 'screen'],
+      thumbnailSize: { width: 100, height: 100 }
+    })).map(s => s.thumbnail.constructor.name === 'NativeImage' && !s.thumbnail.isEmpty());
+
+    w2.destroy();
+    expect(isNonEmpties).to.be.an('array').that.is.not.empty();
+    expect(isNonEmpties.every(e => e === true)).to.be.true();
   });
 
   it('disabling thumbnail should return empty images', async () => {
@@ -146,6 +164,20 @@ ifdescribe(!process.arch.includes('arm') && process.platform !== 'win32')('deskt
       const sourceIds = source.id.split(':');
       expect(sourceIds[1]).to.not.equal(sourceIds[2]);
     }
+  });
+
+  // Regression test - see https://github.com/electron/electron/issues/43002
+  it('does not affect window resizable state', async () => {
+    w.resizable = false;
+
+    const wShown = once(w, 'show');
+    w.show();
+    await wShown;
+
+    const sources = await desktopCapturer.getSources({ types: ['window', 'screen'] });
+    expect(sources).to.be.an('array').that.is.not.empty();
+
+    expect(w.resizable).to.be.false();
   });
 
   it('moveAbove should move the window at the requested place', async () => {

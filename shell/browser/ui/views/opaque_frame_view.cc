@@ -9,13 +9,12 @@
 #include "chrome/grit/generated_resources.h"
 #include "components/strings/grit/components_strings.h"
 #include "shell/browser/native_window_views.h"
-#include "shell/browser/ui/inspectable_web_contents_view.h"
 #include "shell/browser/ui/views/caption_button_placeholder_container.h"
-#include "ui/aura/window.h"
 #include "ui/base/hit_test.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/compositor/layer.h"
+#include "ui/gfx/font_list.h"
 #include "ui/linux/linux_ui.h"
 #include "ui/views/background.h"
 #include "ui/views/widget/widget.h"
@@ -136,6 +135,11 @@ gfx::Rect OpaqueFrameView::GetWindowBoundsForClientBounds(
 
 int OpaqueFrameView::NonClientHitTest(const gfx::Point& point) {
   if (window()->IsWindowControlsOverlayEnabled()) {
+    // Ensure support for resizing frameless window with border drag.
+    int frame_component = ResizingBorderHitTest(point);
+    if (frame_component != HTNOWHERE)
+      return frame_component;
+
     if (HitTestCaptionButton(close_button_, point))
       return HTCLOSE;
     if (HitTestCaptionButton(restore_button_, point))
@@ -251,14 +255,17 @@ void OpaqueFrameView::LayoutWindowControls() {
   buttons_not_shown.push_back(views::FrameButton::kMinimize);
   buttons_not_shown.push_back(views::FrameButton::kClose);
 
-  for (const auto& button : leading_buttons_) {
-    ConfigureButton(button, ALIGN_LEADING);
-    std::erase(buttons_not_shown, button);
-  }
+  // We do not want to show the buttons in fullscreen mode.
+  if (!frame()->IsFullscreen()) {
+    for (const auto& button : leading_buttons_) {
+      ConfigureButton(button, ALIGN_LEADING);
+      std::erase(buttons_not_shown, button);
+    }
 
-  for (const auto& button : base::Reversed(trailing_buttons_)) {
-    ConfigureButton(button, ALIGN_TRAILING);
-    std::erase(buttons_not_shown, button);
+    for (const auto& button : base::Reversed(trailing_buttons_)) {
+      ConfigureButton(button, ALIGN_TRAILING);
+      std::erase(buttons_not_shown, button);
+    }
   }
 
   for (const auto& button_id : buttons_not_shown)
@@ -331,7 +338,7 @@ bool OpaqueFrameView::IsFrameCondensed() const {
 }
 
 gfx::Insets OpaqueFrameView::RestoredFrameBorderInsets() const {
-  return gfx::Insets();
+  return {};
 }
 
 gfx::Insets OpaqueFrameView::RestoredFrameEdgeInsets() const {
@@ -397,8 +404,7 @@ void OpaqueFrameView::ConfigureButton(views::FrameButton button_id,
                                       ButtonAlignment alignment) {
   switch (button_id) {
     case views::FrameButton::kMinimize: {
-      bool can_minimize = true;  // delegate_->CanMinimize();
-      if (can_minimize) {
+      if (window()->IsMinimizable()) {
         minimize_button_->SetVisible(true);
         SetBoundsForButton(button_id, minimize_button_, alignment);
       } else {
@@ -407,8 +413,7 @@ void OpaqueFrameView::ConfigureButton(views::FrameButton button_id,
       break;
     }
     case views::FrameButton::kMaximize: {
-      bool can_maximize = true;  // delegate_->CanMaximize();
-      if (can_maximize) {
+      if (window()->IsMaximizable()) {
         // When the window is restored, we show a maximized button; otherwise,
         // we show a restore button.
         bool is_restored = !window()->IsMaximized() && !window()->IsMinimized();
@@ -426,8 +431,12 @@ void OpaqueFrameView::ConfigureButton(views::FrameButton button_id,
       break;
     }
     case views::FrameButton::kClose: {
-      close_button_->SetVisible(true);
-      SetBoundsForButton(button_id, close_button_, alignment);
+      if (window()->IsClosable()) {
+        close_button_->SetVisible(true);
+        SetBoundsForButton(button_id, close_button_, alignment);
+      } else {
+        HideButton(button_id);
+      }
       break;
     }
   }

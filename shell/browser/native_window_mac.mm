@@ -33,18 +33,15 @@
 #include "shell/browser/ui/cocoa/root_view_mac.h"
 #include "shell/browser/ui/cocoa/window_buttons_proxy.h"
 #include "shell/browser/ui/drag_util.h"
-#include "shell/browser/ui/inspectable_web_contents.h"
 #include "shell/browser/window_list.h"
 #include "shell/common/gin_converters/gfx_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
-#include "shell/common/node_includes.h"
+#include "shell/common/node_util.h"
 #include "shell/common/options_switches.h"
 #include "skia/ext/skia_utils_mac.h"
-#include "third_party/skia/include/core/SkRegion.h"
 #include "third_party/webrtc/modules/desktop_capture/mac/window_list_utils.h"
 #include "ui/base/hit_test.h"
 #include "ui/display/screen.h"
-#include "ui/gfx/skia_util.h"
 #include "ui/gl/gpu_switching_manager.h"
 #include "ui/views/background.h"
 #include "ui/views/cocoa/native_widget_mac_ns_window_host.h"
@@ -94,7 +91,7 @@ namespace gin {
 template <>
 struct Converter<electron::NativeWindowMac::VisualEffectState> {
   static bool FromV8(v8::Isolate* isolate,
-                     v8::Handle<v8::Value> val,
+                     v8::Local<v8::Value> val,
                      electron::NativeWindowMac::VisualEffectState* out) {
     using VisualEffectState = electron::NativeWindowMac::VisualEffectState;
     std::string visual_effect_state;
@@ -135,7 +132,7 @@ NativeWindowMac::NativeWindowMac(const gin_helper::Dictionary& options,
   bool resizable = true;
   options.Get(options::kResizable, &resizable);
   options.Get(options::kZoomToPageWidth, &zoom_to_page_width_);
-  options.Get(options::kSimpleFullScreen, &always_simple_fullscreen_);
+  options.Get(options::kSimpleFullscreen, &always_simple_fullscreen_);
   options.GetOptional(options::kTrafficLightPosition, &traffic_light_position_);
   options.Get(options::kVisualEffectState, &visual_effect_state_);
 
@@ -157,13 +154,8 @@ NativeWindowMac::NativeWindowMac(const gin_helper::Dictionary& options,
   bool hiddenInMissionControl = false;
   options.Get(options::kHiddenInMissionControl, &hiddenInMissionControl);
 
-  bool useStandardWindow = true;
-  // eventually deprecate separate "standardWindow" option in favor of
-  // standard / textured window types
-  options.Get(options::kStandardWindow, &useStandardWindow);
-  if (windowType == "textured") {
-    useStandardWindow = false;
-  }
+  bool paint_when_initially_hidden = true;
+  options.Get(options::kPaintWhenInitiallyHidden, &paint_when_initially_hidden);
 
   // The window without titlebar is treated the same with frameless window.
   if (title_bar_style_ != TitleBarStyle::kNormal)
@@ -184,20 +176,36 @@ NativeWindowMac::NativeWindowMac(const gin_helper::Dictionary& options,
     styleMask |= NSWindowStyleMaskClosable;
   if (resizable)
     styleMask |= NSWindowStyleMaskResizable;
-  if (!useStandardWindow || transparent() || !has_frame())
+
+// TODO: remove NSWindowStyleMaskTexturedBackground.
+// https://github.com/electron/electron/issues/43125
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  if (windowType == "textured" && (transparent() || !has_frame())) {
+    util::EmitWarning(
+        "The 'textured' window type is deprecated and will be removed",
+        "DeprecationWarning");
     styleMask |= NSWindowStyleMaskTexturedBackground;
+  }
+#pragma clang diagnostic pop
 
   // Create views::Widget and assign window_ with it.
   // TODO(zcbenz): Get rid of the window_ in future.
-  views::Widget::InitParams params;
-  params.ownership = views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET;
+  views::Widget::InitParams params(
+      views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET,
+      views::Widget::InitParams::TYPE_WINDOW);
   params.bounds = bounds;
   params.delegate = this;
   params.type = views::Widget::InitParams::TYPE_WINDOW;
+  // Possibly allow painting before shown - later disabled in ElectronNSWindow.
+  params.headless_mode = paint_when_initially_hidden;
+  if (IsTranslucent()) {
+    params.opacity = views::Widget::InitParams::WindowOpacity::kTranslucent;
+  }
   params.native_widget =
       new ElectronNativeWidgetMac(this, windowType, styleMask, widget());
   widget()->Init(std::move(params));
-  widget()->SetNativeWindowProperty(kElectronNativeWindowKey, this);
+  widget()->SetNativeWindowProperty(kElectronNativeWindowKey.c_str(), this);
   SetCanResize(resizable);
   window_ = static_cast<ElectronNSWindow*>(
       widget()->GetNativeWindow().GetNativeNSWindow());
@@ -346,8 +354,11 @@ void NativeWindowMac::Close() {
   // [window_ performClose:nil], the window won't close properly
   // even after the user has ended the sheet.
   // Ensure it's closed before calling [window_ performClose:nil].
-  if ([window_ attachedSheet])
+  // If multiple sheets are open, they must all be closed.
+  while ([window_ attachedSheet]) {
     [window_ endSheet:[window_ attachedSheet]];
+  }
+  DCHECK_EQ([[window_ sheets] count], 0UL);
 
   // window_ could be nil after performClose.
   bool should_notify = is_modal() && parent() && IsVisible();
@@ -424,7 +435,13 @@ void NativeWindowMac::ShowInactive() {
   if (parent())
     InternalSetParentWindow(parent(), true);
 
+  // Triggers `NativeWidgetMacNSWindowHost::OnVisibilityChanged`.
+  widget()->ShowInactive();
+  // `Widget::ShowInactive` is not sufficient to bring window to front.
   [window_ orderFrontRegardless];
+  // Above calls do not trigger `orderWindow: relativeTo:` in which headless
+  // mode is being disabled.
+  [window_ disableHeadlessMode];
 }
 
 void NativeWindowMac::Hide() {
@@ -932,7 +949,7 @@ std::string NativeWindowMac::GetTitle() const {
 
 void NativeWindowMac::FlashFrame(bool flash) {
   if (flash) {
-    attention_request_id_ = [NSApp requestUserAttention:NSInformationalRequest];
+    attention_request_id_ = [NSApp requestUserAttention:NSCriticalRequest];
   } else {
     [NSApp cancelUserAttentionRequest:attention_request_id_];
     attention_request_id_ = 0;
@@ -1159,6 +1176,10 @@ void NativeWindowMac::SetContentProtection(bool enable) {
       setSharingType:enable ? NSWindowSharingNone : NSWindowSharingReadOnly];
 }
 
+bool NativeWindowMac::IsContentProtected() const {
+  return [window_ sharingType] == NSWindowSharingNone;
+}
+
 void NativeWindowMac::SetFocusable(bool focusable) {
   // No known way to unfocus the window if it had the focus. Here we do not
   // want to call Focus(false) because it moves the window to the back, i.e.
@@ -1335,22 +1356,44 @@ void NativeWindowMac::UpdateWindowOriginalFrame() {
   original_frame_ = [window_ frame];
 }
 
-void NativeWindowMac::SetVibrancy(const std::string& type) {
-  NativeWindow::SetVibrancy(type);
+void NativeWindowMac::SetVibrancy(const std::string& type, int duration) {
+  NativeWindow::SetVibrancy(type, duration);
 
   NSVisualEffectView* vibrantView = [window_ vibrantView];
   views::View* rootView = GetContentsView();
+  bool animate = duration > 0;
 
   if (type.empty()) {
-    if (vibrant_native_view_host_ != nullptr) {
-      // Transfers ownership back to caller in the form of a unique_ptr which is
-      // subsequently deleted.
-      rootView->RemoveChildViewT(vibrant_native_view_host_);
-      vibrant_native_view_host_ = nullptr;
-    }
+    vibrancy_type_ = type;
 
-    if (vibrantView != nil) {
-      [window_ setVibrantView:nil];
+    auto cleanupHandler = ^{
+      if (vibrant_native_view_host_ != nullptr) {
+        // Transfers ownership back to caller in the form of a unique_ptr which
+        // is subsequently deleted.
+        rootView->RemoveChildViewT(vibrant_native_view_host_);
+        vibrant_native_view_host_ = nullptr;
+      }
+
+      if (vibrantView != nil) {
+        [window_ setVibrantView:nil];
+      }
+    };
+
+    if (animate) {
+      __weak ElectronNSWindowDelegate* weak_delegate = window_delegate_;
+      [NSAnimationContext
+          runAnimationGroup:^(NSAnimationContext* context) {
+            context.duration = duration / 1000.0f;
+            vibrantView.animator.alphaValue = 0.0;
+          }
+          completionHandler:^{
+            if (!weak_delegate)
+              return;
+
+            cleanupHandler();
+          }];
+    } else {
+      cleanupHandler();
     }
 
     return;
@@ -1409,13 +1452,23 @@ void NativeWindowMac::SetVibrancy(const std::string& type) {
 
       // Vibrant view is inserted into the root view hierarchy underneath all
       // other views.
-      vibrant_native_view_host_ = new views::NativeViewHost();
-      rootView->AddChildViewAt(vibrant_native_view_host_, 0);
+      vibrant_native_view_host_ = rootView->AddChildViewAt(
+          std::make_unique<views::NativeViewHost>(), 0);
       vibrant_native_view_host_->Attach(vibrantView);
 
       rootView->DeprecatedLayoutImmediately();
 
       UpdateVibrancyRadii(IsFullscreen());
+    }
+
+    if (animate) {
+      [vibrantView setAlphaValue:0.0];
+      [NSAnimationContext
+          runAnimationGroup:^(NSAnimationContext* context) {
+            context.duration = duration / 1000.0f;
+            vibrantView.animator.alphaValue = 1.0;
+          }
+          completionHandler:nil];
     }
 
     [vibrantView setMaterial:vibrancyType];
@@ -1553,8 +1606,11 @@ void NativeWindowMac::PreviewFile(const std::string& path,
 }
 
 void NativeWindowMac::CloseFilePreview() {
-  if ([QLPreviewPanel sharedPreviewPanelExists]) {
+  // Need to be careful about checking [QLPreviewPanel sharedPreviewPanel] as
+  // simply accessing it will cause it to reinitialize and reappear.
+  if ([QLPreviewPanel sharedPreviewPanelExists] && preview_item_) {
     [[QLPreviewPanel sharedPreviewPanel] close];
+    preview_item_ = nil;
   }
 }
 
@@ -1639,6 +1695,7 @@ void NativeWindowMac::Cleanup() {
   DCHECK(!IsClosed());
   ui::NativeTheme::GetInstanceForNativeUi()->RemoveObserver(this);
   display::Screen::GetScreen()->RemoveObserver(this);
+  [window_ cleanup];
 }
 
 class NativeAppWindowFrameViewMac : public views::NativeFrameViewMac {

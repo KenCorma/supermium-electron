@@ -6,39 +6,41 @@ Subject: disable_hidden.patch
 Electron uses this to disable background throttling for hidden windows.
 
 diff --git a/content/browser/renderer_host/render_widget_host_impl.cc b/content/browser/renderer_host/render_widget_host_impl.cc
-index 7f63e954dc68a82699e06b5e611c590faf342a6b..df4a7d191281af4602517ecc7300235ceb4e6799 100644
+index 734e717d2cc5cf31473ed47f733a619dfacca39e..761469e3ca95ebe1269f005a2b3527cd1f4fdc56 100644
 --- a/content/browser/renderer_host/render_widget_host_impl.cc
 +++ b/content/browser/renderer_host/render_widget_host_impl.cc
-@@ -749,6 +749,9 @@ void RenderWidgetHostImpl::WasHidden() {
+@@ -799,6 +799,10 @@ void RenderWidgetHostImpl::WasHidden() {
      return;
    }
  
-+  if (disable_hidden_)
++  if (disable_hidden_) {
 +    return;
++  }
 +
-   RejectPointerLockOrUnlockIfNecessary(
-       blink::mojom::PointerLockResult::kWrongDocument);
- 
+   // Cancel pending pointer lock requests, unless there's an open user prompt.
+   // Prompts should remain open and functional across tab switches.
+   if (!delegate_->IsWaitingForPointerLockPrompt(this)) {
 diff --git a/content/browser/renderer_host/render_widget_host_impl.h b/content/browser/renderer_host/render_widget_host_impl.h
-index fb89c4500eeae064c6c8f3d4c0ad7b5b4deecb5a..52868268ba4843e0743284afc684e549011c4110 100644
+index c3429732757d87df1363a8ce10deee82ef674514..4cf7f44c7fd955cc4d19c11cc0015d3d8562d950 100644
 --- a/content/browser/renderer_host/render_widget_host_impl.h
 +++ b/content/browser/renderer_host/render_widget_host_impl.h
-@@ -920,6 +920,8 @@ class CONTENT_EXPORT RenderWidgetHostImpl
-   void UpdateBrowserControlsState(cc::BrowserControlsState constraints,
-                                   cc::BrowserControlsState current,
-                                   bool animate);
+@@ -1010,6 +1010,9 @@ class CONTENT_EXPORT RenderWidgetHostImpl
+   // Requests a commit and forced redraw in the renderer compositor.
+   void ForceRedrawForTesting();
+ 
 +  // Electron: Prevents the widget from getting hidden.
 +  bool disable_hidden_ = false;
- 
-   void StartDragging(blink::mojom::DragDataPtr drag_data,
-                      const url::Origin& source_origin,
++
+  protected:
+   // |routing_id| must not be MSG_ROUTING_NONE.
+   // If this object outlives |delegate|, DetachDelegate() must be called when
 diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/content/browser/renderer_host/render_widget_host_view_aura.cc
-index 58310ec382696f0f59c36771f8bf205016981ccb..cb9b21a3d3e99558e6892e00e73e550f68571daf 100644
+index 1d08f25b91496dbafc3a164e7fb3e66d1a48557b..92085aca6bd0c95a73b98e4173c0128d596b77f4 100644
 --- a/content/browser/renderer_host/render_widget_host_view_aura.cc
 +++ b/content/browser/renderer_host/render_widget_host_view_aura.cc
-@@ -613,7 +613,7 @@ void RenderWidgetHostViewAura::HideImpl() {
-   DCHECK(visibility_ == Visibility::HIDDEN ||
-          visibility_ == Visibility::OCCLUDED);
+@@ -643,7 +643,7 @@ void RenderWidgetHostViewAura::HideImpl() {
+   CHECK(visibility_ == Visibility::HIDDEN ||
+         visibility_ == Visibility::OCCLUDED);
  
 -  if (!host()->is_hidden()) {
 +  if (!host()->is_hidden() && !host()->disable_hidden_) {

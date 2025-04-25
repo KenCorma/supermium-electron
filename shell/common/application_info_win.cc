@@ -13,10 +13,8 @@
 #include <memory>
 
 #include "base/file_version_info.h"
-#include "base/notreached.h"
 #include "base/strings/string_util.h"
 #include "base/strings/string_util_win.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "shell/browser/win/scoped_hstring.h"
 

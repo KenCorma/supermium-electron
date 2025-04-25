@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andreas Haas <ahaas@chromium.org>
+Date: Sun, 28 Jul 2024 09:20:12 +0200
+Subject: src: stop using deprecated fields of `v8::FastApiCallbackOptions`
+
+Two fields on the `v8::FastApiCallbackOptions` struct were deprecated
+recently: `fallback` and `wasm_memory`. This PR removes uses of these
+two fields in node.js.
+
+(This is a subset of upstream commit d0000b118 from the `canary-base`
+branch of Node.js. This patch can be removed when Electron upgrades to
+a stable Node release that contains the change. -- Charles)
+
+diff --git a/src/crypto/crypto_timing.cc b/src/crypto/crypto_timing.cc
+index 3d8ccc77b5952a999c5fe48792259d32b402c460..867a1c4aca54b9d41490d23a5eb55088b7e941cc 100644
+--- a/src/crypto/crypto_timing.cc
++++ b/src/crypto/crypto_timing.cc
+@@ -59,7 +59,8 @@ bool FastTimingSafeEqual(Local<Value> receiver,
+   if (a.length() != b.length() || !a.getStorageIfAligned(&data_a) ||
+       !b.getStorageIfAligned(&data_b)) {
+     TRACK_V8_FAST_API_CALL("crypto.timingSafeEqual.error");
+-    options.fallback = true;
++    v8::HandleScope scope(options.isolate);
++    THROW_ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH(options.isolate);
+     return false;
+   }
+ 
+diff --git a/src/histogram.cc b/src/histogram.cc
+index 0f0cde7be431dcb80c5314b1a9da49886c436d1c..f6d2bd439cad8b9f91c9d9a6cdb302e64130a5e2 100644
+--- a/src/histogram.cc
++++ b/src/histogram.cc
+@@ -195,7 +195,8 @@ void HistogramBase::FastRecord(Local<Value> unused,
+                                const int64_t value,
+                                FastApiCallbackOptions& options) {
+   if (value < 1) {
+-    options.fallback = true;
++    Environment* env = Environment::GetCurrent(options.isolate);
++    THROW_ERR_OUT_OF_RANGE(env, "value is out of range");
+     return;
+   }
+   HistogramBase* histogram;
+diff --git a/src/node_file.cc b/src/node_file.cc
+index 3d7e303741a73134e140152bed637fe5ae8bc1db..5e744bc34b9dc364e8f20adfd37ee41d76451170 100644
+--- a/src/node_file.cc
++++ b/src/node_file.cc
+@@ -1061,13 +1061,8 @@ static int32_t FastInternalModuleStat(
+     // NOLINTNEXTLINE(runtime/references) This is V8 api.
+     FastApiCallbackOptions& options) {
+   // This needs a HandleScope which needs an isolate.
+-  Isolate* isolate = Isolate::TryGetCurrent();
+-  if (!isolate) {
+-    options.fallback = true;
+-    return -1;
+-  }
+-
+-  HandleScope scope(isolate);
++  Environment* env = Environment::GetCurrent(options.isolate);
++  HandleScope scope(env->isolate());
+ 
+   auto path = std::filesystem::path(input.data, input.data + input.length);
+ 
+diff --git a/src/node_wasi.cc b/src/node_wasi.cc
+index 468c2e59903fefe58d9c178d3afac3ef5b09f611..23a376e52e08a8af49dd47c47488552e01287426 100644
+--- a/src/node_wasi.cc
++++ b/src/node_wasi.cc
+@@ -251,17 +251,19 @@ R WASI::WasiFunction<FT, F, R, Args...>::FastCallback(
+     return EinvalError<R>();
+   }
+ 
+-  if (options.wasm_memory == nullptr || wasi->memory_.IsEmpty()) [[unlikely]] {
+-    // fallback to slow path which to throw an error about missing memory.
+-    options.fallback = true;
++  v8::Isolate* isolate = receiver->GetIsolate();
++  v8::HandleScope handle_scope(isolate);
++  if (wasi->memory_.IsEmpty()) {
++    THROW_ERR_WASI_NOT_STARTED(isolate);
+     return EinvalError<R>();
+   }
+-  uint8_t* memory = nullptr;
+-  CHECK(options.wasm_memory->getStorageIfAligned(&memory));
+ 
+-  return F(*wasi,
+-           {reinterpret_cast<char*>(memory), options.wasm_memory->length()},
+-           args...);
++  Local<ArrayBuffer> ab = wasi->memory_.Get(isolate)->Buffer();
++  size_t mem_size = ab->ByteLength();
++  char* mem_data = static_cast<char*>(ab->Data());
++  CHECK_NOT_NULL(mem_data);
++
++  return F(*wasi, {mem_data, mem_size}, args...);
+ }
+ 
+ namespace {

@@ -11,13 +11,16 @@
 #include "shell/browser/api/electron_api_base_window.h"
 #include "shell/browser/api/electron_api_web_contents.h"
 #include "shell/browser/ui/drag_util.h"
-#include "shell/common/gin_helper/error_thrower.h"
+
+namespace gin_helper {
+class ErrorThrower;
+}  // namespace gin_helper
 
 namespace electron::api {
 
 class BrowserWindow : public BaseWindow,
-                      public content::WebContentsObserver,
-                      public ExtendedWebContentsObserver {
+                      private content::WebContentsObserver,
+                      private ExtendedWebContentsObserver {
  public:
   static gin_helper::WrappableBase* New(gin_helper::ErrorThrower thrower,
                                         gin::Arguments* args);
@@ -43,9 +46,6 @@ class BrowserWindow : public BaseWindow,
 
   // content::WebContentsObserver:
   void BeforeUnloadDialogCancelled() override;
-  void OnRendererUnresponsive(content::RenderProcessHost*) override;
-  void OnRendererResponsive(
-      content::RenderProcessHost* render_process_host) override;
   void WebContentsDestroyed() override;
 
   // ExtendedWebContentsObserver:
@@ -79,16 +79,6 @@ class BrowserWindow : public BaseWindow,
 
  private:
   // Helpers.
-
-  // Schedule a notification unresponsive event.
-  void ScheduleUnresponsiveEvent(int ms);
-
-  // Dispatch unresponsive event to observers.
-  void NotifyWindowUnresponsive();
-
-  // Closure that would be called when window is unresponsive when closing,
-  // it should be cancelled when we can prove that the window is responsive.
-  base::CancelableRepeatingClosure window_unresponsive_closure_;
 
   v8::Global<v8::Value> web_contents_;
   v8::Global<v8::Value> web_contents_view_;

@@ -1,6 +1,6 @@
-import * as fs from 'fs';
-
 import { Menu } from 'electron/main';
+
+import * as fs from 'fs';
 
 const bindings = process._linkedBinding('electron_browser_app');
 const commandLine = process._linkedBinding('electron_common_command_line');
@@ -111,3 +111,19 @@ for (const name of events) {
     webContents.emit(name, event, ...args);
   });
 }
+
+app._clientCertRequestPasswordHandler = null;
+app.setClientCertRequestPasswordHandler = function (handler: (params: Electron.ClientCertRequestParams) => Promise<string>) {
+  app._clientCertRequestPasswordHandler = handler;
+};
+
+app.on('-client-certificate-request-password', async (event: Electron.Event<Electron.ClientCertRequestParams>, callback: (password: string) => void) => {
+  event.preventDefault();
+  const { hostname, tokenName, isRetry } = event;
+  if (!app._clientCertRequestPasswordHandler) {
+    callback('');
+    return;
+  }
+  const password = await app._clientCertRequestPasswordHandler({ hostname, tokenName, isRetry });
+  callback(password);
+});

@@ -13,6 +13,7 @@
 #include "shell/common/gin_helper/promise.h"
 #include "shell/common/node_includes.h"
 #include "shell/common/platform_util.h"
+#include "v8/include/v8-microtask-queue.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "base/win/scoped_com_initializer.h"
@@ -24,7 +25,7 @@ namespace gin {
 template <>
 struct Converter<base::win::ShortcutOperation> {
   static bool FromV8(v8::Isolate* isolate,
-                     v8::Handle<v8::Value> val,
+                     v8::Local<v8::Value> val,
                      base::win::ShortcutOperation* out) {
     std::string operation;
     if (!ConvertFromV8(isolate, val, &operation))
@@ -51,7 +52,7 @@ void OnOpenFinished(gin_helper::Promise<void> promise,
   if (error.empty())
     promise.Resolve();
   else
-    promise.RejectWithErrorMessage(error.c_str());
+    promise.RejectWithErrorMessage(error);
 }
 
 v8::Local<v8::Promise> OpenExternal(const GURL& url, gin::Arguments* args) {
@@ -162,7 +163,8 @@ v8::Local<v8::Value> ReadShortcutLink(gin_helper::ErrorThrower thrower,
   options.Set("icon", properties.icon);
   options.Set("iconIndex", properties.icon_index);
   options.Set("appUserModelId", properties.app_id);
-  options.Set("toastActivatorClsid", properties.toast_activator_clsid);
+  if (properties.options & ShortcutProperties::PROPERTIES_TOAST_ACTIVATOR_CLSID)
+    options.Set("toastActivatorClsid", properties.toast_activator_clsid);
   return gin::ConvertToV8(thrower.isolate(), options);
 }
 #endif

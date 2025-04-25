@@ -9,21 +9,27 @@
 #include <vector>
 
 #include "base/containers/id_map.h"
-#include "base/functional/callback.h"
+#include "base/functional/callback_forward.h"
+#include "base/values.h"
 #include "content/public/browser/permission_controller_delegate.h"
-#include "gin/dictionary.h"
-#include "shell/browser/electron_browser_context.h"
-#include "shell/common/gin_helper/dictionary.h"
-
-namespace base {
-class Value;
-}  // namespace base
 
 namespace content {
 class WebContents;
 }
 
+namespace gin_helper {
+class Dictionary;
+}  // namespace gin_helper
+
+namespace v8 {
+class Object;
+template <typename T>
+class Local;
+}  // namespace v8
+
 namespace electron {
+
+class ElectronBrowserContext;
 
 class ElectronPermissionManager : public content::PermissionControllerDelegate {
  public:
@@ -130,7 +136,8 @@ class ElectronPermissionManager : public content::PermissionControllerDelegate {
       const url::Origin& embedding_origin) override;
   blink::mojom::PermissionStatus GetPermissionStatusForCurrentDocument(
       blink::PermissionType permission,
-      content::RenderFrameHost* render_frame_host) override;
+      content::RenderFrameHost* render_frame_host,
+      bool should_include_device_status) override;
   blink::mojom::PermissionStatus GetPermissionStatusForWorker(
       blink::PermissionType permission,
       content::RenderProcessHost* render_process_host,
@@ -139,14 +146,6 @@ class ElectronPermissionManager : public content::PermissionControllerDelegate {
       blink::PermissionType permission,
       content::RenderFrameHost* render_frame_host,
       const url::Origin& requesting_origin) override;
-  SubscriptionId SubscribeToPermissionStatusChange(
-      blink::PermissionType permission,
-      content::RenderProcessHost* render_process_host,
-      content::RenderFrameHost* render_frame_host,
-      const GURL& requesting_origin,
-      base::RepeatingCallback<void(blink::mojom::PermissionStatus)> callback)
-      override;
-  void UnsubscribeFromPermissionStatusChange(SubscriptionId id) override;
 
  private:
   class PendingRequest;

@@ -1,11 +1,19 @@
-import { closeAllWindows } from './lib/window-helpers';
+import { BaseWindow, BrowserWindow, View, WebContentsView, webContents, screen } from 'electron/main';
+
 import { expect } from 'chai';
 
-import { BaseWindow, View, WebContentsView } from 'electron/main';
 import { once } from 'node:events';
 
+import { HexColors, ScreenCapture, hasCapturableScreen, nextFrameTime } from './lib/screen-helpers';
+import { defer, ifdescribe, waitUntil } from './lib/spec-helpers';
+import { closeAllWindows } from './lib/window-helpers';
+
 describe('WebContentsView', () => {
-  afterEach(closeAllWindows);
+  afterEach(async () => {
+    await closeAllWindows();
+    const existingWCS = webContents.getAllWebContents();
+    existingWCS.forEach((contents) => contents.close());
+  });
 
   it('can be instantiated with no arguments', () => {
     // eslint-disable-next-line no-new
@@ -15,6 +23,48 @@ describe('WebContentsView', () => {
   it('can be instantiated with no webPreferences', () => {
     // eslint-disable-next-line no-new
     new WebContentsView({});
+  });
+
+  it('accepts existing webContents object', async () => {
+    const currentWebContentsCount = webContents.getAllWebContents().length;
+
+    const wc = (webContents as typeof ElectronInternal.WebContents).create({ sandbox: true });
+    defer(() => wc.destroy());
+    await wc.loadURL('about:blank');
+
+    const webContentsView = new WebContentsView({
+      webContents: wc
+    });
+
+    expect(webContentsView.webContents).to.eq(wc);
+    expect(webContents.getAllWebContents().length).to.equal(currentWebContentsCount + 1, 'expected only single webcontents to be created');
+  });
+
+  it('should throw error when created with already attached webContents to BrowserWindow', () => {
+    const browserWindow = new BrowserWindow();
+    defer(() => browserWindow.webContents.destroy());
+
+    const webContentsView = new WebContentsView();
+    defer(() => webContentsView.webContents.destroy());
+
+    browserWindow.contentView.addChildView(webContentsView);
+    defer(() => browserWindow.contentView.removeChildView(webContentsView));
+
+    expect(() => new WebContentsView({
+      webContents: webContentsView.webContents
+    })).to.throw('options.webContents is already attached to a window');
+  });
+
+  it('should throw error when created with already attached webContents to other WebContentsView', () => {
+    const browserWindow = new BrowserWindow();
+
+    const webContentsView = new WebContentsView();
+    defer(() => webContentsView.webContents.destroy());
+    webContentsView.webContents.loadURL('about:blank');
+
+    expect(() => new WebContentsView({
+      webContents: browserWindow.webContents
+    })).to.throw('options.webContents is already attached to a window');
   });
 
   it('can be used as content view', () => {
@@ -55,6 +105,30 @@ describe('WebContentsView', () => {
     expect(w.contentView.children).to.deep.equal([wcv3, wcv1, wcv2]);
   });
 
+  it('handle removal and re-addition of children', () => {
+    const w = new BaseWindow({ show: false });
+    const cv = new View();
+    w.setContentView(cv);
+
+    const wcv1 = new WebContentsView();
+    const wcv2 = new WebContentsView();
+
+    expect(w.contentView.children).to.deep.equal([]);
+
+    w.contentView.addChildView(wcv1);
+    w.contentView.addChildView(wcv2);
+
+    expect(w.contentView.children).to.deep.equal([wcv1, wcv2]);
+
+    w.contentView.removeChildView(wcv1);
+
+    expect(w.contentView.children).to.deep.equal([wcv2]);
+
+    w.contentView.addChildView(wcv1);
+
+    expect(w.contentView.children).to.deep.equal([wcv2, wcv1]);
+  });
+
   function triggerGCByAllocation () {
     const arr = [];
     for (let i = 0; i < 1000000; i++) {
@@ -91,7 +165,26 @@ describe('WebContentsView', () => {
     expect(w.isFullScreen()).to.be.true('isFullScreen');
   });
 
+  it('can be added as a child of another View', async () => {
+    const w = new BaseWindow();
+    const v = new View();
+    const wcv = new WebContentsView();
+
+    await wcv.webContents.loadURL('data:text/html,<div id="div">This is a simple div.</div>');
+
+    v.addChildView(wcv);
+    w.contentView.addChildView(v);
+
+    expect(w.contentView.children).to.deep.equal([v]);
+    expect(v.children).to.deep.equal([wcv]);
+  });
+
   describe('visibilityState', () => {
+    async function haveVisibilityState (view: WebContentsView, state: string) {
+      const docVisState = await view.webContents.executeJavaScript('document.visibilityState');
+      return docVisState === state;
+    }
+
     it('is initially hidden', async () => {
       const v = new WebContentsView();
       await v.webContents.loadURL('data:text/html,<script>initialVisibility = document.visibilityState</script>');
@@ -128,7 +221,7 @@ describe('WebContentsView', () => {
       const v = new WebContentsView();
       w.setContentView(v);
       await v.webContents.loadURL('about:blank');
-      expect(await v.webContents.executeJavaScript('document.visibilityState')).to.equal('visible');
+      await expect(waitUntil(async () => await haveVisibilityState(v, 'visible'))).to.eventually.be.fulfilled();
       const p = v.webContents.executeJavaScript('new Promise(resolve => document.addEventListener("visibilitychange", resolve))');
       // We have to wait until the listener above is fully registered before hiding the window.
       // On Windows, the executeJavaScript and the visibilitychange can happen out of order
@@ -160,7 +253,7 @@ describe('WebContentsView', () => {
       const v = new WebContentsView();
       w.setContentView(v);
       await v.webContents.loadURL('about:blank');
-      expect(await v.webContents.executeJavaScript('document.visibilityState')).to.equal('visible');
+      await expect(waitUntil(async () => await haveVisibilityState(v, 'visible'))).to.eventually.be.fulfilled();
 
       const p = v.webContents.executeJavaScript('new Promise(resolve => document.addEventListener("visibilitychange", () => resolve(document.visibilityState)))');
       // Ensure the listener has been registered.
@@ -178,6 +271,94 @@ describe('WebContentsView', () => {
         visibilityState = await v.webContents.executeJavaScript('new Promise(resolve => document.visibilityState === "visible" ? resolve("visible") : document.addEventListener("visibilitychange", () => resolve(document.visibilityState)))');
       }
       expect(visibilityState).to.equal('visible');
+    });
+  });
+
+  describe('setBorderRadius', () => {
+    ifdescribe(hasCapturableScreen())('capture', () => {
+      let w: Electron.BaseWindow;
+      let v: Electron.WebContentsView;
+      let display: Electron.Display;
+      let corners: Electron.Point[];
+
+      const backgroundUrl = `data:text/html,<style>html{background:${encodeURIComponent(HexColors.GREEN)}}</style>`;
+
+      beforeEach(async () => {
+        display = screen.getPrimaryDisplay();
+
+        w = new BaseWindow({
+          ...display.workArea,
+          show: true,
+          frame: false,
+          hasShadow: false,
+          backgroundColor: HexColors.BLUE,
+          roundedCorners: false
+        });
+
+        v = new WebContentsView();
+        w.setContentView(v);
+        v.setBorderRadius(100);
+
+        const readyForCapture = once(v.webContents, 'ready-to-show');
+        v.webContents.loadURL(backgroundUrl);
+
+        const inset = 10;
+        corners = [
+          { x: display.workArea.x + inset, y: display.workArea.y + inset }, // top-left
+          { x: display.workArea.x + display.workArea.width - inset, y: display.workArea.y + inset }, // top-right
+          { x: display.workArea.x + display.workArea.width - inset, y: display.workArea.y + display.workArea.height - inset }, // bottom-right
+          { x: display.workArea.x + inset, y: display.workArea.y + display.workArea.height - inset } // bottom-left
+        ];
+
+        await readyForCapture;
+      });
+
+      afterEach(() => {
+        w.destroy();
+        w = v = null!;
+      });
+
+      it('should render with cutout corners', async () => {
+        const screenCapture = new ScreenCapture(display);
+
+        for (const corner of corners) {
+          await screenCapture.expectColorAtPointOnDisplayMatches(HexColors.BLUE, () => corner);
+        }
+
+        // Center should be WebContents page background color
+        await screenCapture.expectColorAtCenterMatches(HexColors.GREEN);
+      });
+
+      it('should allow resetting corners', async () => {
+        const corner = corners[0];
+        v.setBorderRadius(0);
+
+        await nextFrameTime();
+        const screenCapture = new ScreenCapture(display);
+        await screenCapture.expectColorAtPointOnDisplayMatches(HexColors.GREEN, () => corner);
+        await screenCapture.expectColorAtCenterMatches(HexColors.GREEN);
+      });
+
+      it('should render when set before attached', async () => {
+        v = new WebContentsView();
+        v.setBorderRadius(100); // must set before
+
+        w.setContentView(v);
+
+        const readyForCapture = once(v.webContents, 'ready-to-show');
+        v.webContents.loadURL(backgroundUrl);
+        await readyForCapture;
+
+        const corner = corners[0];
+        const screenCapture = new ScreenCapture(display);
+        await screenCapture.expectColorAtPointOnDisplayMatches(HexColors.BLUE, () => corner);
+        await screenCapture.expectColorAtCenterMatches(HexColors.GREEN);
+      });
+    });
+
+    it('should allow setting when not attached', async () => {
+      const v = new WebContentsView();
+      v.setBorderRadius(100);
     });
   });
 });

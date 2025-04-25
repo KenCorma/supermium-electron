@@ -9,7 +9,7 @@
 #include <utility>
 
 #include "base/apple/foundation_util.h"
-#include "base/logging.h"
+#include "base/functional/callback.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -23,7 +23,6 @@
 #include "ui/base/l10n/l10n_util_mac.h"
 #include "ui/events/cocoa/cocoa_event_utils.h"
 #include "ui/events/keycodes/keyboard_code_conversion_mac.h"
-#include "ui/gfx/image/image.h"
 #include "ui/strings/grit/ui_strings.h"
 
 using content::BrowserThread;

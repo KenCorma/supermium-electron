@@ -5,16 +5,16 @@
 #include "shell/browser/serial/serial_chooser_context.h"
 
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "base/base64.h"
-#include "base/containers/contains.h"
-#include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "content/public/browser/device_service.h"
 #include "content/public/browser/web_contents.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "shell/browser/api/electron_api_session.h"
+#include "shell/browser/electron_browser_context.h"
 #include "shell/browser/electron_permission_manager.h"
 #include "shell/browser/web_contents_permission_helper.h"
 #include "shell/common/gin_converters/frame_converter.h"
@@ -22,27 +22,12 @@
 
 namespace electron {
 
-constexpr char kPortNameKey[] = "name";
-constexpr char kTokenKey[] = "token";
-constexpr char kBluetoothDevicePathKey[] = "bluetooth_device_path";
-#if BUILDFLAG(IS_WIN)
-constexpr char kDeviceInstanceIdKey[] = "device_instance_id";
-#else
-constexpr char kVendorIdKey[] = "vendor_id";
-constexpr char kProductIdKey[] = "product_id";
-constexpr char kSerialNumberKey[] = "serial_number";
-#if BUILDFLAG(IS_MAC)
-constexpr char kUsbDriverKey[] = "usb_driver";
-#endif  // BUILDFLAG(IS_MAC)
-#endif  // BUILDFLAG(IS_WIN)
-
 namespace {
 
 std::string EncodeToken(const base::UnguessableToken& token) {
   const uint64_t data[2] = {token.GetHighForSerialization(),
                             token.GetLowForSerialization()};
-  return base::Base64Encode(
-      base::StringPiece(reinterpret_cast<const char*>(&data[0]), sizeof(data)));
+  return base::Base64Encode(base::as_byte_span(data));
 }
 
 base::Value PortInfoToValue(const device::mojom::SerialPortInfo& port) {
@@ -122,7 +107,7 @@ bool SerialChooserContext::HasPortPermission(
   auto it = ephemeral_ports_.find(origin);
   if (it != ephemeral_ports_.end()) {
     const std::set<base::UnguessableToken>& ports = it->second;
-    if (base::Contains(ports, port.token))
+    if (ports.contains(port.token))
       return true;
   }
 
@@ -240,7 +225,7 @@ base::WeakPtr<SerialChooserContext> SerialChooserContext::AsWeakPtr() {
 }
 
 void SerialChooserContext::OnPortAdded(device::mojom::SerialPortInfoPtr port) {
-  if (!base::Contains(port_info_, port->token))
+  if (!port_info_.contains(port->token))
     port_info_.insert({port->token, port->Clone()});
 
   for (auto& map_entry : ephemeral_ports_) {

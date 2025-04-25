@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
-#include "base/strings/utf_string_conversions.h"
 #include "gin/wrappable.h"
 #include "shell/browser/event_emitter_mixin.h"
 #include "shell/browser/notifications/notification.h"
@@ -17,7 +16,6 @@
 #include "shell/browser/notifications/notification_presenter.h"
 #include "shell/common/gin_helper/cleaned_up_at_exit.h"
 #include "shell/common/gin_helper/constructible.h"
-#include "shell/common/gin_helper/error_thrower.h"
 #include "ui/gfx/image/image.h"
 
 namespace gin {
@@ -26,13 +24,17 @@ template <typename T>
 class Handle;
 }  // namespace gin
 
+namespace gin_helper {
+class ErrorThrower;
+}  // namespace gin_helper
+
 namespace electron::api {
 
-class Notification : public gin::Wrappable<Notification>,
-                     public gin_helper::EventEmitterMixin<Notification>,
-                     public gin_helper::Constructible<Notification>,
-                     public gin_helper::CleanedUpAtExit,
-                     public NotificationDelegate {
+class Notification final : public gin::Wrappable<Notification>,
+                           public gin_helper::EventEmitterMixin<Notification>,
+                           public gin_helper::Constructible<Notification>,
+                           public gin_helper::CleanedUpAtExit,
+                           public NotificationDelegate {
  public:
   static bool IsSupported();
 
@@ -54,6 +56,9 @@ class Notification : public gin::Wrappable<Notification>,
   // gin::Wrappable
   static gin::WrapperInfo kWrapperInfo;
   const char* GetTypeName() override;
+
+  // gin_helper::CleanedUpAtExit
+  void WillBeDestroyed() override;
 
   // disable copy
   Notification(const Notification&) = delete;

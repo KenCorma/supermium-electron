@@ -12,8 +12,11 @@
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents_user_data.h"
+#include "shell/browser/electron_browser_context.h"
 #include "shell/browser/electron_permission_manager.h"
 #include "shell/browser/media/media_capture_devices_dispatcher.h"
+#include "third_party/blink/public/common/mediastream/media_stream_request.h"
+#include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
 
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/media/webrtc/system_media_capture_permissions_mac.h"
@@ -50,28 +53,28 @@ namespace {
 
   // If the device id wasn't specified then this is a screen capture request
   // (i.e. chooseDesktopMedia() API wasn't used to generate device id).
-  return content::DesktopMediaID(content::DesktopMediaID::TYPE_SCREEN,
-                                 -1 /* kFullDesktopScreenId */);
+  return {content::DesktopMediaID::TYPE_SCREEN, -1 /* kFullDesktopScreenId */};
 }
 
 #if BUILDFLAG(IS_MAC)
 bool SystemMediaPermissionDenied(const content::MediaStreamRequest& request) {
-  if (request.audio_type != MediaStreamType::NO_SERVICE) {
+  if (request.audio_type == MediaStreamType::DEVICE_AUDIO_CAPTURE) {
     const auto system_audio_permission =
-        system_media_permissions::CheckSystemAudioCapturePermission();
+        system_permission_settings::CheckSystemAudioCapturePermission();
     return system_audio_permission ==
-               system_media_permissions::SystemPermission::kRestricted ||
+               system_permission_settings::SystemPermission::kRestricted ||
            system_audio_permission ==
-               system_media_permissions::SystemPermission::kDenied;
+               system_permission_settings::SystemPermission::kDenied;
   }
-  if (request.video_type != MediaStreamType::NO_SERVICE) {
+  if (request.video_type == MediaStreamType::DEVICE_VIDEO_CAPTURE) {
     const auto system_video_permission =
-        system_media_permissions::CheckSystemVideoCapturePermission();
+        system_permission_settings::CheckSystemVideoCapturePermission();
     return system_video_permission ==
-               system_media_permissions::SystemPermission::kRestricted ||
+               system_permission_settings::SystemPermission::kRestricted ||
            system_video_permission ==
-               system_media_permissions::SystemPermission::kDenied;
+               system_permission_settings::SystemPermission::kDenied;
   }
+
   return false;
 }
 #endif
@@ -98,16 +101,20 @@ void HandleUserMediaRequest(const content::MediaStreamRequest& request,
             : "");
   }
 
-  if (request.video_type == MediaStreamType::GUM_TAB_VIDEO_CAPTURE ||
-      request.video_type == MediaStreamType::GUM_DESKTOP_VIDEO_CAPTURE) {
+  if (request.video_type == MediaStreamType::GUM_TAB_VIDEO_CAPTURE) {
+    devices_ref.video_device =
+        blink::MediaStreamDevice(request.video_type, "", "");
+  } else if (request.video_type == MediaStreamType::GUM_DESKTOP_VIDEO_CAPTURE) {
+    // If the DesktopMediaID can't be successfully parsed, throw an
+    // Invalid state error to match upstream.
+    auto dm_id = GetScreenId(request.requested_video_device_ids);
+    if (dm_id.is_null()) {
+      std::move(callback).Run(blink::mojom::StreamDevicesSet(),
+                              MediaStreamRequestResult::INVALID_STATE, nullptr);
+      return;
+    }
     devices_ref.video_device = blink::MediaStreamDevice(
-        request.video_type,
-        request.video_type == MediaStreamType::GUM_DESKTOP_VIDEO_CAPTURE
-            ? GetScreenId(request.requested_video_device_ids).ToString()
-            : "",
-        request.video_type == MediaStreamType::GUM_DESKTOP_VIDEO_CAPTURE
-            ? "Screen"
-            : "");
+        request.video_type, dm_id.ToString(), "Screen");
   }
 
   bool empty = !devices_ref.audio_device.has_value() &&

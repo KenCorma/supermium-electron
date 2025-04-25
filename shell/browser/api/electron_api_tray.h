@@ -10,36 +10,40 @@
 #include <string>
 #include <vector>
 
-#include "gin/handle.h"
 #include "gin/wrappable.h"
 #include "shell/browser/event_emitter_mixin.h"
-#include "shell/browser/javascript_environment.h"
 #include "shell/browser/ui/tray_icon.h"
 #include "shell/browser/ui/tray_icon_observer.h"
 #include "shell/common/gin_converters/guid_converter.h"
 #include "shell/common/gin_helper/cleaned_up_at_exit.h"
 #include "shell/common/gin_helper/constructible.h"
-#include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/gin_helper/pinnable.h"
 
 namespace gfx {
 class Image;
-}
+class Image;
+}  // namespace gfx
+
+namespace gin {
+template <typename T>
+class Handle;
+}  // namespace gin
 
 namespace gin_helper {
 class Dictionary;
-}
+class ErrorThrower;
+}  // namespace gin_helper
 
 namespace electron::api {
 
 class Menu;
 
-class Tray : public gin::Wrappable<Tray>,
-             public gin_helper::EventEmitterMixin<Tray>,
-             public gin_helper::Constructible<Tray>,
-             public gin_helper::CleanedUpAtExit,
-             public gin_helper::Pinnable<Tray>,
-             public TrayIconObserver {
+class Tray final : public gin::Wrappable<Tray>,
+                   public gin_helper::EventEmitterMixin<Tray>,
+                   public gin_helper::Constructible<Tray>,
+                   public gin_helper::CleanedUpAtExit,
+                   public gin_helper::Pinnable<Tray>,
+                   private TrayIconObserver {
  public:
   // gin_helper::Constructible
   static gin::Handle<Tray> New(gin_helper::ErrorThrower thrower,
@@ -53,6 +57,9 @@ class Tray : public gin::Wrappable<Tray>,
   // gin::Wrappable
   static gin::WrapperInfo kWrapperInfo;
   const char* GetTypeName() override;
+
+  // gin_helper::CleanedUpAtExit
+  void WillBeDestroyed() override;
 
   // disable copy
   Tray(const Tray&) = delete;

@@ -10,22 +10,20 @@
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/values.h"
 #include "content/public/browser/download_manager.h"
 #include "electron/buildflags/buildflags.h"
-#include "gin/handle.h"
 #include "gin/wrappable.h"
-#include "services/network/public/mojom/host_resolver.mojom.h"
-#include "services/network/public/mojom/ssl_config.mojom.h"
+#include "services/network/public/mojom/host_resolver.mojom-forward.h"
+#include "services/network/public/mojom/ssl_config.mojom-forward.h"
+#include "shell/browser/api/ipc_dispatcher.h"
 #include "shell/browser/event_emitter_mixin.h"
 #include "shell/browser/net/resolve_proxy_helper.h"
 #include "shell/common/gin_helper/cleaned_up_at_exit.h"
 #include "shell/common/gin_helper/constructible.h"
-#include "shell/common/gin_helper/error_thrower.h"
-#include "shell/common/gin_helper/function_template_extensions.h"
 #include "shell/common/gin_helper/pinnable.h"
-#include "shell/common/gin_helper/promise.h"
 
 #if BUILDFLAG(ENABLE_BUILTIN_SPELLCHECKER)
 #include "chrome/browser/spellchecker/spellcheck_hunspell_dictionary.h"  // nogncheck
@@ -42,13 +40,16 @@ namespace base {
 class FilePath;
 }
 
-namespace gin_helper {
-class Dictionary;
-}
-
 namespace gin {
 class Arguments;
-}
+template <typename T>
+class Handle;
+}  // namespace gin
+
+namespace gin_helper {
+class Dictionary;
+class ErrorThrower;
+}  // namespace gin_helper
 
 namespace net {
 class ProxyConfig;
@@ -57,21 +58,23 @@ class ProxyConfig;
 namespace electron {
 
 class ElectronBrowserContext;
+struct PreloadScript;
 
 namespace api {
 
-class Session : public gin::Wrappable<Session>,
-                public gin_helper::Pinnable<Session>,
-                public gin_helper::Constructible<Session>,
-                public gin_helper::EventEmitterMixin<Session>,
-                public gin_helper::CleanedUpAtExit,
+class Session final : public gin::Wrappable<Session>,
+                      public gin_helper::Pinnable<Session>,
+                      public gin_helper::Constructible<Session>,
+                      public gin_helper::EventEmitterMixin<Session>,
+                      public gin_helper::CleanedUpAtExit,
+                      public IpcDispatcher<Session>,
 #if BUILDFLAG(ENABLE_BUILTIN_SPELLCHECKER)
-                public SpellcheckHunspellDictionary::Observer,
+                      private SpellcheckHunspellDictionary::Observer,
 #endif
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
-                public extensions::ExtensionRegistryObserver,
+                      private extensions::ExtensionRegistryObserver,
 #endif
-                public content::DownloadManager::Observer {
+                      private content::DownloadManager::Observer {
  public:
   // Gets or creates Session from the |browser_context|.
   static gin::Handle<Session> CreateFrom(
@@ -92,13 +95,18 @@ class Session : public gin::Wrappable<Session>,
       const base::FilePath& path,
       base::Value::Dict options = {});
 
-  ElectronBrowserContext* browser_context() const { return browser_context_; }
+  ElectronBrowserContext* browser_context() const {
+    return &browser_context_.get();
+  }
 
   // gin::Wrappable
   static gin::WrapperInfo kWrapperInfo;
   static void FillObjectTemplate(v8::Isolate*, v8::Local<v8::ObjectTemplate>);
   static const char* GetClassName() { return "Session"; }
   const char* GetTypeName() override;
+
+  // gin_helper::CleanedUpAtExit
+  void WillBeDestroyed() override;
 
   // Methods.
   v8::Local<v8::Promise> ResolveHost(
@@ -136,8 +144,17 @@ class Session : public gin::Wrappable<Session>,
                                      const std::string& uuid);
   void DownloadURL(const GURL& url, gin::Arguments* args);
   void CreateInterruptedDownload(const gin_helper::Dictionary& options);
-  void SetPreloads(const std::vector<base::FilePath>& preloads);
-  std::vector<base::FilePath> GetPreloads() const;
+  std::string RegisterPreloadScript(gin_helper::ErrorThrower thrower,
+                                    const PreloadScript& new_preload_script);
+  void UnregisterPreloadScript(gin_helper::ErrorThrower thrower,
+                               const std::string& script_id);
+  std::vector<PreloadScript> GetPreloadScripts() const;
+  v8::Local<v8::Promise> GetSharedDictionaryInfo(
+      const gin_helper::Dictionary& options);
+  v8::Local<v8::Promise> GetSharedDictionaryUsageInfo();
+  v8::Local<v8::Promise> ClearSharedDictionaryCache();
+  v8::Local<v8::Promise> ClearSharedDictionaryCacheForIsolationKey(
+      const gin_helper::Dictionary& options);
   v8::Local<v8::Value> Cookies(v8::Isolate* isolate);
   v8::Local<v8::Value> Protocol(v8::Isolate* isolate);
   v8::Local<v8::Value> ServiceWorkerContext(v8::Isolate* isolate);
@@ -148,6 +165,8 @@ class Session : public gin::Wrappable<Session>,
   v8::Local<v8::Value> GetPath(v8::Isolate* isolate);
   void SetCodeCachePath(gin::Arguments* args);
   v8::Local<v8::Promise> ClearCodeCaches(const gin_helper::Dictionary& options);
+  v8::Local<v8::Value> ClearData(gin_helper::ErrorThrower thrower,
+                                 gin::Arguments* args);
 #if BUILDFLAG(ENABLE_BUILTIN_SPELLCHECKER)
   base::Value GetSpellCheckerLanguages();
   void SetSpellCheckerLanguages(gin_helper::ErrorThrower thrower,
@@ -214,7 +233,7 @@ class Session : public gin::Wrappable<Session>,
   // The client id to enable the network throttler.
   base::UnguessableToken network_emulation_token_;
 
-  const raw_ptr<ElectronBrowserContext> browser_context_;
+  const raw_ref<ElectronBrowserContext> browser_context_;
 
   base::WeakPtrFactory<Session> weak_factory_{this};
 };

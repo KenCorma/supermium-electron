@@ -24,15 +24,17 @@ CleanedUpAtExit::CleanedUpAtExit() {
   GetDoomed().emplace_back(this);
 }
 CleanedUpAtExit::~CleanedUpAtExit() {
-  auto& doomed = GetDoomed();
-  doomed.erase(std::remove(doomed.begin(), doomed.end(), this), doomed.end());
+  std::erase(GetDoomed(), this);
 }
+
+void CleanedUpAtExit::WillBeDestroyed() {}
 
 // static
 void CleanedUpAtExit::DoCleanup() {
   auto& doomed = GetDoomed();
   while (!doomed.empty()) {
     CleanedUpAtExit* next = doomed.back();
+    next->WillBeDestroyed();
     delete next;
   }
 }

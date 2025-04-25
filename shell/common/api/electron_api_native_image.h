@@ -9,11 +9,10 @@
 #include <vector>
 
 #include "base/containers/flat_map.h"
+#include "base/containers/span.h"
 #include "base/memory/raw_ptr.h"
 #include "base/values.h"
-#include "gin/handle.h"
 #include "gin/wrappable.h"
-#include "shell/common/gin_helper/error_thrower.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_skia_rep.h"
 
@@ -26,24 +25,28 @@ class GURL;
 
 namespace base {
 class FilePath;
-}
+}  // namespace base
 
 namespace gfx {
 class Rect;
 class Size;
 }  // namespace gfx
 
-namespace gin_helper {
-class Dictionary;
-}
-
 namespace gin {
 class Arguments;
-}
+
+template <typename T>
+class Handle;
+}  // namespace gin
+
+namespace gin_helper {
+class Dictionary;
+class ErrorThrower;
+}  // namespace gin_helper
 
 namespace electron::api {
 
-class NativeImage : public gin::Wrappable<NativeImage> {
+class NativeImage final : public gin::Wrappable<NativeImage> {
  public:
   NativeImage(v8::Isolate* isolate, const gfx::Image& image);
 #if BUILDFLAG(IS_WIN)
@@ -59,11 +62,10 @@ class NativeImage : public gin::Wrappable<NativeImage> {
   static gin::Handle<NativeImage> Create(v8::Isolate* isolate,
                                          const gfx::Image& image);
   static gin::Handle<NativeImage> CreateFromPNG(v8::Isolate* isolate,
-                                                const char* buffer,
-                                                size_t length);
-  static gin::Handle<NativeImage> CreateFromJPEG(v8::Isolate* isolate,
-                                                 const char* buffer,
-                                                 size_t length);
+                                                base::span<const uint8_t> data);
+  static gin::Handle<NativeImage> CreateFromJPEG(
+      v8::Isolate* isolate,
+      base::span<const uint8_t> data);
   static gin::Handle<NativeImage> CreateFromPath(v8::Isolate* isolate,
                                                  const base::FilePath& path);
   static gin::Handle<NativeImage> CreateFromBitmap(
@@ -132,13 +134,13 @@ class NativeImage : public gin::Wrappable<NativeImage> {
   base::FilePath hicon_path_;
 
   // size -> hicon
-  base::flat_map<int, base::win::ScopedHICON> hicons_;
+  base::flat_map<int, base::win::ScopedGDIObject<HICON>> hicons_;
 #endif
 
   gfx::Image image_;
 
   raw_ptr<v8::Isolate> isolate_;
-  int32_t memory_usage_ = 0;
+  int64_t memory_usage_ = 0;
 };
 
 }  // namespace electron::api

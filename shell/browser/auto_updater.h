@@ -8,8 +8,6 @@
 #include <map>
 #include <string>
 
-#include "build/build_config.h"
-
 namespace base {
 class Time;
 }
@@ -45,7 +43,7 @@ class Delegate {
                                   const std::string& update_url) {}
 
  protected:
-  virtual ~Delegate() {}
+  virtual ~Delegate() = default;
 };
 
 class AutoUpdater {

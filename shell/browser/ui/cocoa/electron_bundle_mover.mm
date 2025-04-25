@@ -16,6 +16,7 @@
 #include "gin/dictionary.h"
 #include "shell/browser/browser.h"
 #include "shell/common/gin_converters/callback_converter.h"
+#include "shell/common/gin_helper/error_thrower.h"
 
 namespace gin {
 
@@ -29,7 +30,7 @@ struct Converter<electron::BundlerMoverConflictType> {
       case electron::BundlerMoverConflictType::kExistsAndRunning:
         return gin::StringToV8(isolate, "existsAndRunning");
       default:
-        return gin::StringToV8(isolate, "");
+        return v8::String::Empty(isolate);
     }
   }
 };

@@ -13,9 +13,7 @@
 #include "base/command_line.h"
 #include "base/containers/fixed_flat_map.h"
 #include "base/memory/ptr_util.h"
-#include "base/strings/utf_string_conversions.h"
 #include "cc/base/switches.h"
-#include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "content/public/common/content_switches.h"
@@ -107,8 +105,7 @@ WebContentsPreferences::WebContentsPreferences(
 }
 
 WebContentsPreferences::~WebContentsPreferences() {
-  Instances().erase(std::remove(Instances().begin(), Instances().end(), this),
-                    Instances().end());
+  std::erase(Instances(), this);
 }
 
 void WebContentsPreferences::Clear() {
@@ -125,7 +122,6 @@ void WebContentsPreferences::Clear() {
   images_ = true;
   text_areas_are_resizable_ = true;
   webgl_ = true;
-  enable_websql_ = true;
   enable_preferred_size_mode_ = false;
   web_security_ = true;
   allow_running_insecure_content_ = false;
@@ -152,6 +148,7 @@ void WebContentsPreferences::Clear() {
       blink::mojom::ImageAnimationPolicy::kImageAnimationPolicyAllowed;
   preload_path_ = std::nullopt;
   v8_cache_options_ = blink::mojom::V8CacheOptions::kDefault;
+  deprecated_paste_enabled_ = false;
 
 #if BUILDFLAG(IS_MAC)
   scroll_bounce_ = false;
@@ -184,7 +181,6 @@ void WebContentsPreferences::SetFromDictionary(
   web_preferences.Get(options::kTextAreasAreResizable,
                       &text_areas_are_resizable_);
   web_preferences.Get(options::kWebGL, &webgl_);
-  web_preferences.Get(options::kEnableWebSQL, &enable_websql_);
   web_preferences.Get(options::kEnablePreferredSizeMode,
                       &enable_preferred_size_mode_);
   web_preferences.Get(options::kWebSecurity, &web_security_);
@@ -250,6 +246,9 @@ void WebContentsPreferences::SetFromDictionary(
 
   web_preferences.Get("v8CacheOptions", &v8_cache_options_);
 
+  web_preferences.Get(options::kEnableDeprecatedPaste,
+                      &deprecated_paste_enabled_);
+
 #if BUILDFLAG(IS_MAC)
   web_preferences.Get(options::kScrollBounce, &scroll_bounce_);
 #endif
@@ -259,14 +258,6 @@ void WebContentsPreferences::SetFromDictionary(
 #endif
 
   SaveLastPreferences();
-}
-
-bool WebContentsPreferences::GetSafeDialogsMessage(std::string* message) const {
-  if (safe_dialogs_message_) {
-    *message = *safe_dialogs_message_;
-    return true;
-  }
-  return false;
 }
 
 bool WebContentsPreferences::SetImageAnimationPolicy(std::string policy) {
@@ -286,15 +277,6 @@ bool WebContentsPreferences::SetImageAnimationPolicy(std::string policy) {
   return false;
 }
 
-bool WebContentsPreferences::GetPreloadPath(base::FilePath* path) const {
-  DCHECK(path);
-  if (preload_path_) {
-    *path = *preload_path_;
-    return true;
-  }
-  return false;
-}
-
 bool WebContentsPreferences::IsSandboxed() const {
   if (sandbox_)
     return *sandbox_;
@@ -305,7 +287,7 @@ bool WebContentsPreferences::IsSandboxed() const {
 
 // static
 content::WebContents* WebContentsPreferences::GetWebContentsFromProcessID(
-    int process_id) {
+    content::ChildProcessId process_id) {
   for (WebContentsPreferences* preferences : Instances()) {
     content::WebContents* web_contents = preferences->web_contents_;
     if (web_contents->GetPrimaryMainFrame()->GetProcess()->GetID() ==
@@ -383,7 +365,6 @@ void WebContentsPreferences::SaveLastPreferences() {
   dict.Set(options::kSandbox, IsSandboxed());
   dict.Set(options::kContextIsolation, context_isolation_);
   dict.Set(options::kJavaScript, javascript_);
-  dict.Set(options::kEnableWebSQL, enable_websql_);
   dict.Set(options::kWebviewTag, webview_tag_);
   dict.Set("disablePopups", disable_popups_);
   dict.Set(options::kWebSecurity, web_security_);
@@ -493,9 +474,10 @@ void WebContentsPreferences::OverrideWebkitPrefs(
 
   prefs->enable_plugins = plugins_;
   prefs->webview_tag = webview_tag_;
-  prefs->enable_websql = enable_websql_;
 
   prefs->v8_cache_options = v8_cache_options_;
+
+  prefs->dom_paste_enabled = deprecated_paste_enabled_;
 }
 
 WEB_CONTENTS_USER_DATA_KEY_IMPL(WebContentsPreferences);

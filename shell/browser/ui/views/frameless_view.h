@@ -35,7 +35,7 @@ class FramelessView : public views::NonClientFrameView {
 
   // Tells the NonClientView to invalidate caption buttons
   // and forces a re-layout and re-paint.
-  virtual void InvalidateCaptionButtons();
+  virtual void InvalidateCaptionButtons() {}
 
   NativeWindowViews* window() const { return window_; }
   views::Widget* frame() const { return frame_; }
@@ -51,17 +51,18 @@ class FramelessView : public views::NonClientFrameView {
   gfx::Rect GetWindowBoundsForClientBounds(
       const gfx::Rect& client_bounds) const override;
   int NonClientHitTest(const gfx::Point& point) override;
-  void GetWindowMask(const gfx::Size& size, SkPath* window_mask) override;
-  void ResetWindowControls() override;
-  void UpdateWindowIcon() override;
-  void UpdateWindowTitle() override;
-  void SizeConstraintsChanged() override;
+  void GetWindowMask(const gfx::Size& size, SkPath* window_mask) override {}
+  void ResetWindowControls() override {}
+  void UpdateWindowIcon() override {}
+  void UpdateWindowTitle() override {}
+  void SizeConstraintsChanged() override {}
 
   // views::ViewTargeterDelegate:
   views::View* TargetForRect(views::View* root, const gfx::Rect& rect) override;
 
   // views::View:
-  gfx::Size CalculatePreferredSize() const override;
+  gfx::Size CalculatePreferredSize(
+      const views::SizeBounds& available_size) const override;
   gfx::Size GetMinimumSize() const override;
   gfx::Size GetMaximumSize() const override;
 

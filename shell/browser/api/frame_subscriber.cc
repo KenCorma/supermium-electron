@@ -9,6 +9,7 @@
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
+#include "content/public/browser/web_contents.h"
 #include "media/capture/mojom/video_capture_buffer.mojom.h"
 #include "media/capture/mojom/video_capture_types.mojom.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -132,7 +133,7 @@ void FrameSubscriber::OnFrameCaptured(
       SkImageInfo::MakeN32(content_rect.width(), content_rect.height(),
                            kPremul_SkAlphaType),
       pixels,
-      media::VideoFrame::RowBytes(media::VideoFrame::kARGBPlane,
+      media::VideoFrame::RowBytes(media::VideoFrame::Plane::kARGB,
                                   info->pixel_format, info->coded_size.width()),
       [](void* addr, void* context) {
         delete static_cast<FramePinner*>(context);
@@ -142,14 +143,6 @@ void FrameSubscriber::OnFrameCaptured(
 
   Done(content_rect, bitmap);
 }
-
-void FrameSubscriber::OnNewSubCaptureTargetVersion(uint32_t crop_version) {}
-
-void FrameSubscriber::OnFrameWithEmptyRegionCapture() {}
-
-void FrameSubscriber::OnStopped() {}
-
-void FrameSubscriber::OnLog(const std::string& message) {}
 
 void FrameSubscriber::Done(const gfx::Rect& damage, const SkBitmap& frame) {
   if (frame.drawsNothing())

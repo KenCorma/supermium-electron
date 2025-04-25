@@ -1,8 +1,10 @@
-import { GitProcess, IGitExecutionOptions, IGitResult } from 'dugite';
 import { expect } from 'chai';
-import * as notes from '../script/release/notes/notes.js';
-import * as path from 'node:path';
+import { GitProcess, IGitExecutionOptions, IGitResult } from 'dugite';
 import * as sinon from 'sinon';
+
+import * as path from 'node:path';
+
+import * as notes from '../script/release/notes/notes';
 
 /* Fake a Dugite GitProcess that only returns the specific
    commits that we want to test */
@@ -209,6 +211,53 @@ describe('release notes', () => {
       const results: any = await notes.get(oldBranch, newBranch, version);
       expect(results.breaking).to.have.lengthOf(1);
       expect(results.breaking[0].hash).to.equal(testCommit.sha1);
+    });
+  });
+  // test that when you have multiple stack updates only the
+  // latest will be kept
+  describe('superseding stack updates', () => {
+    const oldBranch = '27-x-y';
+    const newBranch = '28-x-y';
+
+    const version = 'v28.0.0';
+
+    it('with different major versions', async function () {
+      const mostRecentCommit = new Commit('9d0e6d09f0be0abbeae46dd3d66afd96d2daacaa', 'chore: bump chromium to 119.0.6043.0');
+
+      const sharedChromiumHistory = [
+        new Commit('029127a8b6f7c511fca4612748ad5b50e43aadaa', 'chore: bump chromium to 118.0.5993.0') // merge-base
+      ];
+      const chromiumPatchUpdates = [
+        new Commit('d9ba26273ad3e7a34c905eccbd5dabda4eb7b402', 'chore: bump chromium to 118.0.5991.0'),
+        mostRecentCommit,
+        new Commit('d6c8ff2e7050f30dffd784915bcbd2a9f993cdb2', 'chore: bump chromium to 119.0.6029.0')
+      ];
+
+      gitFake.setBranch(oldBranch, sharedChromiumHistory);
+      gitFake.setBranch(newBranch, [...sharedChromiumHistory, ...chromiumPatchUpdates]);
+
+      const results: any = await notes.get(oldBranch, newBranch, version);
+      expect(results.other).to.have.lengthOf(1);
+      expect(results.other[0].hash).to.equal(mostRecentCommit.sha1);
+    });
+    it('with different build versions', async function () {
+      const mostRecentCommit = new Commit('8f7a48879ef8633a76279803637cdee7f7c6cd4f', 'chore: bump chromium to 119.0.6045.0');
+
+      const sharedChromiumHistory = [
+        new Commit('029127a8b6f7c511fca4612748ad5b50e43aadaa', 'chore: bump chromium to 118.0.5993.0') // merge-base
+      ];
+      const chromiumPatchUpdates = [
+        mostRecentCommit,
+        new Commit('9d0e6d09f0be0abbeae46dd3d66afd96d2daacaa', 'chore: bump chromium to 119.0.6043.0'),
+        new Commit('d6c8ff2e7050f30dffd784915bcbd2a9f993cdb2', 'chore: bump chromium to 119.0.6029.0')
+      ];
+
+      gitFake.setBranch(oldBranch, sharedChromiumHistory);
+      gitFake.setBranch(newBranch, [...sharedChromiumHistory, ...chromiumPatchUpdates]);
+
+      const results: any = await notes.get(oldBranch, newBranch, version);
+      expect(results.other).to.have.lengthOf(1);
+      expect(results.other[0].hash).to.equal(mostRecentCommit.sha1);
     });
   });
 });

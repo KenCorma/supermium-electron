@@ -16,8 +16,9 @@ sys.path.append(
 
 from zipfile import ZipFile
 from lib.config import PLATFORM, get_target_arch, \
-                       get_zip_name, enable_verbose_mode, \
-                       is_verbose_mode, get_platform_key
+                       get_zip_name, set_verbose_mode, \
+                       is_verbose_mode, get_platform_key, \
+                       verbose_mode_print
 from lib.util import get_electron_branding, execute, get_electron_version, \
                      store_artifact, get_electron_exec, get_out_dir, \
                      SRC_DIR, ELECTRON_DIR, TS_NODE
@@ -45,17 +46,15 @@ CXX_OBJECTS_NAME = get_zip_name(PROJECT_NAME, ELECTRON_VERSION,
 
 def main():
   args = parse_args()
-  if args.verbose:
-    enable_verbose_mode()
+  set_verbose_mode(args.verbose)
   if args.upload_to_storage:
     utcnow = datetime.datetime.utcnow()
     args.upload_timestamp = utcnow.strftime('%Y%m%d')
 
   build_version = get_electron_build_version()
   if not ELECTRON_VERSION.startswith(build_version):
-    error = 'Tag name ({0}) should match build version ({1})\n'.format(
-        ELECTRON_VERSION, build_version)
-    sys.stderr.write(error)
+    errmsg = f"Tag ({ELECTRON_VERSION}) should match build ({build_version})\n"
+    sys.stderr.write(errmsg)
     sys.stderr.flush()
     return 1
 
@@ -344,8 +343,7 @@ def upload_electron(release, file_path, args):
   # if upload_to_storage is set, skip github upload.
   # todo (vertedinde): migrate this variable to upload_to_storage
   if args.upload_to_storage:
-    key_prefix = 'release-builds/{0}_{1}'.format(args.version,
-                                                     args.upload_timestamp)
+    key_prefix = f'release-builds/{args.version}_{args.upload_timestamp}'
     store_artifact(os.path.dirname(file_path), key_prefix, [file_path])
     upload_sha256_checksum(args.version, file_path, key_prefix)
     return
@@ -358,44 +356,43 @@ def upload_electron(release, file_path, args):
 
 
 def upload_io_to_github(release, filename, filepath, version):
-  print('Uploading %s to GitHub' % \
-      (filename))
+  print(f'Uploading {filename} to GitHub')
   script_path = os.path.join(
     ELECTRON_DIR, 'script', 'release', 'uploaders', 'upload-to-github.ts')
-  upload_process = subprocess.Popen([TS_NODE, script_path, filepath, filename, 
-          str(release['id']), version], stdout=subprocess.PIPE, 
-          stderr=subprocess.STDOUT)
-  if is_verbose_mode():
-    for c in iter(lambda: upload_process.stdout.read(1), b""):
-      sys.stdout.buffer.write(c)
-      sys.stdout.flush()
+  with subprocess.Popen([TS_NODE, script_path, filepath,
+                         filename, str(release['id']), version],
+                        stdout=subprocess.PIPE, 
+                        stderr=subprocess.STDOUT) as upload_process:
+    if is_verbose_mode():
+      for c in iter(lambda: upload_process.stdout.read(1), b""):
+        sys.stdout.buffer.write(c)
+        sys.stdout.flush()
 
 
 def upload_sha256_checksum(version, file_path, key_prefix=None):
-  checksum_path = '{}.sha256sum'.format(file_path)
+  checksum_path = f'{file_path}.sha256sum'
   if key_prefix is None:
-    key_prefix = 'checksums-scratchpad/{0}'.format(version)
+    key_prefix = f'checksums-scratchpad/{version}'
   sha256 = hashlib.sha256()
   with open(file_path, 'rb') as f:
     sha256.update(f.read())
 
   filename = os.path.basename(file_path)
-  with open(checksum_path, 'w') as checksum:
-    checksum.write('{} *{}'.format(sha256.hexdigest(), filename))
+  with open(checksum_path, 'w', encoding='utf-8') as checksum:
+    checksum.write(f'{sha256.hexdigest()} *{filename}')
   store_artifact(os.path.dirname(checksum_path), key_prefix, [checksum_path])
 
 
 def get_release(version):
   script_path = os.path.join(
-    ELECTRON_DIR, 'script', 'release', 'find-github-release.js')
+    ELECTRON_DIR, 'script', 'release', 'find-github-release.ts')
 
   # Strip warnings from stdout to ensure the only output is the desired object
   release_env = os.environ.copy()
   release_env['NODE_NO_WARNINGS'] = '1'
-  release_info = execute(['node', script_path, version], release_env)
-  if is_verbose_mode():
-    print('Release info for version: {}:\n'.format(version))
-    print(release_info)
+  release_info = execute([TS_NODE, script_path, version], release_env)
+  verbose_mode_print(f'Release info for version: {version}:\n')
+  verbose_mode_print(release_info)
   release = json.loads(release_info)
   return release
 

@@ -13,6 +13,11 @@ namespace electron {
 
 class CocoaNotification;
 
+// NSUserNotification is deprecated; all calls should be replaced with
+// UserNotifications.frameworks API
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
 class NotificationPresenterMac : public NotificationPresenter {
  public:
   CocoaNotification* GetNotification(NSUserNotification* ns_notification);
@@ -21,11 +26,15 @@ class NotificationPresenterMac : public NotificationPresenter {
   ~NotificationPresenterMac() override;
 
  private:
+  // NotificationPresenter
   Notification* CreateNotificationObject(
       NotificationDelegate* delegate) override;
 
   NotificationCenterDelegate* __strong notification_center_delegate_;
 };
+
+// -Wdeprecated-declarations
+#pragma clang diagnostic pop
 
 }  // namespace electron
 

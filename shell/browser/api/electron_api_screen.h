@@ -10,7 +10,6 @@
 #include "base/memory/raw_ptr.h"
 #include "gin/wrappable.h"
 #include "shell/browser/event_emitter_mixin.h"
-#include "shell/common/gin_helper/error_thrower.h"
 #include "ui/display/display_observer.h"
 #include "ui/display/screen.h"
 
@@ -20,11 +19,15 @@ class Rect;
 class Screen;
 }  // namespace gfx
 
+namespace gin_helper {
+class ErrorThrower;
+}  // namespace gin_helper
+
 namespace electron::api {
 
-class Screen : public gin::Wrappable<Screen>,
-               public gin_helper::EventEmitterMixin<Screen>,
-               public display::DisplayObserver {
+class Screen final : public gin::Wrappable<Screen>,
+                     public gin_helper::EventEmitterMixin<Screen>,
+                     private display::DisplayObserver {
  public:
   static v8::Local<v8::Value> Create(gin_helper::ErrorThrower error_thrower);
 
@@ -57,7 +60,7 @@ class Screen : public gin::Wrappable<Screen>,
 
   // display::DisplayObserver:
   void OnDisplayAdded(const display::Display& new_display) override;
-  void OnDisplayRemoved(const display::Display& old_display) override;
+  void OnDisplaysRemoved(const display::Displays& removed_displays) override;
   void OnDisplayMetricsChanged(const display::Display& display,
                                uint32_t changed_metrics) override;
 

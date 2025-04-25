@@ -5,17 +5,20 @@
 #include "shell/browser/api/electron_api_debugger.h"
 
 #include <string>
+#include <string_view>
 #include <utility>
 
+#include "base/containers/span.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/web_contents.h"
+#include "gin/handle.h"
 #include "gin/object_template_builder.h"
 #include "gin/per_isolate_data.h"
 #include "shell/browser/javascript_environment.h"
 #include "shell/common/gin_converters/value_converter.h"
-#include "shell/common/node_includes.h"
+#include "shell/common/gin_helper/promise.h"
 
 using content::DevToolsAgentHost;
 
@@ -42,8 +45,7 @@ void Debugger::DispatchProtocolMessage(DevToolsAgentHost* agent_host,
   v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
   v8::HandleScope handle_scope(isolate);
 
-  base::StringPiece message_str(reinterpret_cast<const char*>(message.data()),
-                                message.size());
+  const std::string_view message_str = base::as_string_view(message);
   std::optional<base::Value> parsed_message = base::JSONReader::Read(
       message_str, base::JSON_REPLACE_INVALID_CHARACTERS);
   if (!parsed_message || !parsed_message->is_dict())
@@ -160,8 +162,7 @@ v8::Local<v8::Promise> Debugger::SendCommand(gin::Arguments* args) {
   }
 
   const auto json_args = base::WriteJson(request).value_or("");
-  agent_host_->DispatchProtocolMessage(
-      this, base::as_bytes(base::make_span(json_args)));
+  agent_host_->DispatchProtocolMessage(this, base::as_byte_span(json_args));
 
   return handle;
 }

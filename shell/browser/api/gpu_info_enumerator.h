@@ -5,7 +5,6 @@
 #ifndef ELECTRON_SHELL_BROWSER_API_GPU_INFO_ENUMERATOR_H_
 #define ELECTRON_SHELL_BROWSER_API_GPU_INFO_ENUMERATOR_H_
 
-#include <memory>
 #include <stack>
 #include <string>
 
@@ -30,6 +29,8 @@ class GPUInfoEnumerator final : public gpu::GPUInfo::Enumerator {
  public:
   GPUInfoEnumerator();
   ~GPUInfoEnumerator() override;
+
+  // gpu::GPUInfo::Enumerator
   void AddInt64(const char* name, int64_t value) override;
   void AddInt(const char* name, int value) override;
   void AddString(const char* name, const std::string& value) override;

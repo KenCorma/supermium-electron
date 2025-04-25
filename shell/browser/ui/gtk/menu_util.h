@@ -9,9 +9,12 @@
 
 #include <string>
 
-#include "base/functional/callback.h"
+#include "base/functional/callback_forward.h"
 #include "ui/base/glib/scoped_gsignal.h"
-#include "ui/gfx/image/image.h"
+
+namespace gfx {
+class Image;
+}
 
 namespace ui {
 class MenuModel;

@@ -14,21 +14,26 @@
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/hid_chooser.h"
 #include "content/public/browser/weak_document_ptr.h"
-#include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "services/device/public/mojom/hid.mojom-forward.h"
-#include "shell/browser/api/electron_api_session.h"
-#include "shell/browser/hid/electron_hid_delegate.h"
 #include "shell/browser/hid/hid_chooser_context.h"
 #include "shell/common/gin_converters/frame_converter.h"
-#include "third_party/blink/public/mojom/devtools/console_message.mojom.h"
-#include "third_party/blink/public/mojom/hid/hid.mojom.h"
+#include "third_party/blink/public/mojom/devtools/console_message.mojom-forward.h"
+#include "third_party/blink/public/mojom/hid/hid.mojom-forward.h"
 
 namespace content {
 class RenderFrameHost;
+class WebContents;
 }  // namespace content
 
+namespace gin {
+class Arguments;
+}
+
 namespace electron {
+namespace api {
+class Session;
+}
 
 class ElectronHidDelegate;
 
@@ -36,8 +41,8 @@ class HidChooserContext;
 
 // HidChooserController provides data for the WebHID API permission prompt.
 class HidChooserController
-    : public content::WebContentsObserver,
-      public electron::HidChooserContext::DeviceObserver {
+    : private content::WebContentsObserver,
+      private electron::HidChooserContext::DeviceObserver {
  public:
   // Construct a chooser controller for Human Interface Devices (HID).
   // |render_frame_host| is used to initialize the chooser strings and to access

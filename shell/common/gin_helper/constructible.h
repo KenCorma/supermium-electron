@@ -6,9 +6,9 @@
 #define ELECTRON_SHELL_COMMON_GIN_HELPER_CONSTRUCTIBLE_H_
 
 #include "gin/per_isolate_data.h"
-#include "gin/wrappable.h"
 #include "shell/common/gin_helper/event_emitter_template.h"
 #include "shell/common/gin_helper/function_template_extensions.h"
+#include "v8/include/v8-context.h"
 
 namespace gin_helper {
 template <typename T>

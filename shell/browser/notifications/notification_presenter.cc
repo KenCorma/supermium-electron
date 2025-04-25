@@ -27,21 +27,16 @@ base::WeakPtr<Notification> NotificationPresenter::CreateNotification(
 }
 
 void NotificationPresenter::RemoveNotification(Notification* notification) {
-  auto it = notifications_.find(notification);
-  if (it == notifications_.end()) {
-    return;
-  }
-
-  notifications_.erase(notification);
-  delete notification;
+  if (const auto nh = notifications_.extract(notification))
+    delete nh.value();
 }
 
 void NotificationPresenter::CloseNotificationWithId(
     const std::string& notification_id) {
-  auto it = std::find_if(notifications_.begin(), notifications_.end(),
-                         [&notification_id](const Notification* n) {
-                           return n->notification_id() == notification_id;
-                         });
+  auto it = std::ranges::find_if(
+      notifications_, [&notification_id](const Notification* n) {
+        return n->notification_id() == notification_id;
+      });
   if (it != notifications_.end()) {
     Notification* notification = (*it);
     notification->Dismiss();

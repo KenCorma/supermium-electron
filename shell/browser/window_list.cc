@@ -6,7 +6,6 @@
 
 #include <algorithm>
 
-#include "base/logging.h"
 #include "base/no_destructor.h"
 #include "shell/browser/native_window.h"
 #include "shell/browser/window_list_observer.h"
@@ -51,19 +50,12 @@ void WindowList::AddWindow(NativeWindow* window) {
   // Push |window| on the appropriate list instance.
   WindowVector& windows = GetInstance()->windows_;
   windows.push_back(window);
-
-  for (WindowListObserver& observer : GetObservers())
-    observer.OnWindowAdded(window);
 }
 
 // static
 void WindowList::RemoveWindow(NativeWindow* window) {
   WindowVector& windows = GetInstance()->windows_;
-  windows.erase(std::remove(windows.begin(), windows.end(), window),
-                windows.end());
-
-  for (WindowListObserver& observer : GetObservers())
-    observer.OnWindowRemoved(window);
+  std::erase(windows, window);
 
   if (windows.empty()) {
     for (WindowListObserver& observer : GetObservers())
@@ -92,7 +84,7 @@ void WindowList::CloseAllWindows() {
   std::vector<base::WeakPtr<NativeWindow>> weak_windows =
       ConvertToWeakPtrVector(GetInstance()->windows_);
 #if BUILDFLAG(IS_MAC)
-  std::reverse(weak_windows.begin(), weak_windows.end());
+  std::ranges::reverse(weak_windows);
 #endif
   for (const auto& window : weak_windows) {
     if (window && !window->IsClosed())

@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 
+#include "shell/browser/api/electron_api_base_window.h"
 #include "shell/browser/native_window_views.h"
 #include "ui/display/screen.h"
 
@@ -22,7 +23,7 @@ void MenuViews::PopupAt(BaseWindow* window,
                         int x,
                         int y,
                         int positioning_item,
-                        ui::MenuSourceType source_type,
+                        ui::mojom::MenuSourceType source_type,
                         base::OnceClosure callback) {
   auto* native_window = static_cast<NativeWindowViews*>(window->window());
   if (!native_window)

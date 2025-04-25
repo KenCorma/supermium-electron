@@ -8,23 +8,27 @@
 #include <memory>
 #include <string>
 
-#include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
-#include "gin/arguments.h"
-#include "shell/browser/api/electron_api_base_window.h"
 #include "shell/browser/event_emitter_mixin.h"
 #include "shell/browser/ui/electron_menu_model.h"
 #include "shell/common/gin_helper/constructible.h"
 #include "shell/common/gin_helper/pinnable.h"
+#include "ui/base/mojom/menu_source_type.mojom-forward.h"
+
+namespace gin {
+class Arguments;
+}  // namespace gin
 
 namespace electron::api {
+
+class BaseWindow;
 
 class Menu : public gin::Wrappable<Menu>,
              public gin_helper::EventEmitterMixin<Menu>,
              public gin_helper::Constructible<Menu>,
              public gin_helper::Pinnable<Menu>,
              public ElectronMenuModel::Delegate,
-             public ElectronMenuModel::Observer {
+             private ElectronMenuModel::Observer {
  public:
   // gin_helper::Constructible
   static gin::Handle<Menu> New(gin::Arguments* args);
@@ -80,7 +84,7 @@ class Menu : public gin::Wrappable<Menu>,
                        int x,
                        int y,
                        int positioning_item,
-                       ui::MenuSourceType source_type,
+                       ui::mojom::MenuSourceType source_type,
                        base::OnceClosure callback) = 0;
   virtual void ClosePopupAt(int32_t window_id) = 0;
   virtual std::u16string GetAcceleratorTextAtForTesting(int index) const;

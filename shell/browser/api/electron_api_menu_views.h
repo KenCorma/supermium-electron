@@ -10,7 +10,6 @@
 #include "base/containers/flat_map.h"
 #include "base/memory/weak_ptr.h"
 #include "shell/browser/api/electron_api_menu.h"
-#include "ui/display/screen.h"
 #include "ui/views/controls/menu/menu_runner.h"
 
 namespace electron::api {
@@ -21,11 +20,12 @@ class MenuViews : public Menu {
   ~MenuViews() override;
 
  protected:
+  // Menu
   void PopupAt(BaseWindow* window,
                int x,
                int y,
                int positioning_item,
-               ui::MenuSourceType source_type,
+               ui::mojom::MenuSourceType source_type,
                base::OnceClosure callback) override;
   void ClosePopupAt(int32_t window_id) override;
 

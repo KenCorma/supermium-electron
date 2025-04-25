@@ -11,7 +11,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "components/download/public/common/download_item.h"
-#include "gin/handle.h"
 #include "gin/wrappable.h"
 #include "shell/browser/event_emitter_mixin.h"
 #include "shell/browser/ui/file_dialog.h"
@@ -19,12 +18,17 @@
 
 class GURL;
 
+namespace gin {
+template <typename T>
+class Handle;
+}  // namespace gin
+
 namespace electron::api {
 
-class DownloadItem : public gin::Wrappable<DownloadItem>,
-                     public gin_helper::Pinnable<DownloadItem>,
-                     public gin_helper::EventEmitterMixin<DownloadItem>,
-                     public download::DownloadItem::Observer {
+class DownloadItem final : public gin::Wrappable<DownloadItem>,
+                           public gin_helper::Pinnable<DownloadItem>,
+                           public gin_helper::EventEmitterMixin<DownloadItem>,
+                           private download::DownloadItem::Observer {
  public:
   static gin::Handle<DownloadItem> FromOrCreate(v8::Isolate* isolate,
                                                 download::DownloadItem* item);

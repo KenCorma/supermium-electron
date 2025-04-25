@@ -13,8 +13,8 @@
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
-#include "electron/shell/common/api/api.mojom.h"
 #include "shell/browser/native_window.h"
+#include "third_party/skia/include/core/SkRegion.h"
 #include "ui/display/display_observer.h"
 #include "ui/native_theme/native_theme_observer.h"
 #include "ui/views/controls/native/native_view_host.h"
@@ -110,6 +110,7 @@ class NativeWindowMac : public NativeWindow,
   bool IsHiddenInMissionControl() const override;
   void SetHiddenInMissionControl(bool hidden) override;
   void SetContentProtection(bool enable) override;
+  bool IsContentProtected() const override;
   void SetFocusable(bool focusable) override;
   bool IsFocusable() const override;
   void SetParentWindow(NativeWindow* parent) override;
@@ -126,7 +127,7 @@ class NativeWindowMac : public NativeWindow,
                                  bool skipTransformProcessType) override;
   bool IsVisibleOnAllWorkspaces() const override;
   void SetAutoHideCursor(bool auto_hide) override;
-  void SetVibrancy(const std::string& type) override;
+  void SetVibrancy(const std::string& type, int duration) override;
   void SetWindowButtonVisibility(bool visible) override;
   bool GetWindowButtonVisibility() const override;
   void SetWindowButtonPosition(std::optional<gfx::Point> position) override;

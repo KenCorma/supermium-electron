@@ -7,10 +7,10 @@ This patch comes after Chromium removed the ScopedAllowIO API in favor
 of explicitly adding ScopedAllowBlocking calls as friends.
 
 diff --git a/base/threading/thread_restrictions.h b/base/threading/thread_restrictions.h
-index e9b8366361706dcd5977fe9cdba221026770a3c5..ebc1b54cd7029e4cb87be73f87f4967414b1b0eb 100644
+index ab355bfa81e995e31aa0decf68e1275c9bd69657..eeb7abb38725e06cbd8404653ab792b2f6a5be95 100644
 --- a/base/threading/thread_restrictions.h
 +++ b/base/threading/thread_restrictions.h
-@@ -136,6 +136,7 @@ class KeyStorageLinux;
+@@ -132,6 +132,7 @@ class KeyStorageLinux;
  class NativeBackendKWallet;
  class NativeDesktopMediaList;
  class PartnerBookmarksReader;
@@ -18,7 +18,7 @@ index e9b8366361706dcd5977fe9cdba221026770a3c5..ebc1b54cd7029e4cb87be73f87f49674
  class Profile;
  class ProfileImpl;
  class ScopedAllowBlockingForProfile;
-@@ -276,6 +277,9 @@ class BackendImpl;
+@@ -281,6 +282,9 @@ class BackendImpl;
  class InFlightIO;
  bool CleanupDirectorySync(const base::FilePath&);
  }  // namespace disk_cache
@@ -28,7 +28,7 @@ index e9b8366361706dcd5977fe9cdba221026770a3c5..ebc1b54cd7029e4cb87be73f87f49674
  namespace enterprise_connectors {
  class LinuxKeyRotationCommand;
  }  // namespace enterprise_connectors
-@@ -576,6 +580,7 @@ class BASE_EXPORT [[maybe_unused, nodiscard]] ScopedAllowBlocking {
+@@ -578,6 +582,7 @@ class BASE_EXPORT ScopedAllowBlocking {
    friend class ::DesktopNotificationBalloon;
    friend class ::FirefoxProfileLock;
    friend class ::GaiaConfig;
@@ -36,10 +36,10 @@ index e9b8366361706dcd5977fe9cdba221026770a3c5..ebc1b54cd7029e4cb87be73f87f49674
    friend class ::ProfileImpl;
    friend class ::ScopedAllowBlockingForProfile;
    friend class ::StartupTabProviderImpl;
-@@ -615,6 +620,7 @@ class BASE_EXPORT [[maybe_unused, nodiscard]] ScopedAllowBlocking {
-   friend class crosapi::LacrosThreadTypeDelegate;
+@@ -619,6 +624,7 @@ class BASE_EXPORT ScopedAllowBlocking {
    friend class crypto::ScopedAllowBlockingForNSS;  // http://crbug.com/59847
    friend class drive::FakeDriveService;
+   friend class extensions::DesktopAndroidExtensionSystem;
 +  friend class electron::ScopedAllowBlockingForElectron;
    friend class extensions::InstalledLoader;
    friend class extensions::UnpackedInstaller;

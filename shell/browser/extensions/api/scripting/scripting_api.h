@@ -7,15 +7,15 @@
 
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "chrome/common/extensions/api/scripting.h"
-#include "extensions/browser/api/scripting/scripting_utils.h"
 #include "extensions/browser/extension_function.h"
 #include "extensions/browser/script_executor.h"
-#include "extensions/common/mojom/code_injection.mojom.h"
+#include "extensions/browser/scripting_utils.h"
+#include "extensions/common/mojom/code_injection.mojom-forward.h"
 #include "extensions/common/user_script.h"
 
 namespace extensions {
@@ -190,6 +190,15 @@ class ScriptingUpdateContentScriptsFunction : public ExtensionFunction {
 
  private:
   ~ScriptingUpdateContentScriptsFunction() override;
+
+  // Returns a UserScript object by updating the `original_script` with the
+  // `new_script` given delta. If the updated script cannot be parsed, populates
+  // `parse_error` and returns nullptr.
+  std::unique_ptr<UserScript> ApplyUpdate(
+      std::set<std::string>* script_ids_to_persist,
+      api::scripting::RegisteredContentScript& new_script,
+      api::scripting::RegisteredContentScript& original_script,
+      std::u16string* parse_error);
 
   // Called when script files have been checked.
   void OnContentScriptFilesValidated(

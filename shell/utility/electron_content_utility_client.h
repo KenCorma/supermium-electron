@@ -5,14 +5,12 @@
 #ifndef ELECTRON_SHELL_UTILITY_ELECTRON_CONTENT_UTILITY_CLIENT_H_
 #define ELECTRON_SHELL_UTILITY_ELECTRON_CONTENT_UTILITY_CLIENT_H_
 
-#include "base/compiler_specific.h"
 #include "content/public/utility/content_utility_client.h"
-#include "mojo/public/cpp/bindings/binder_map.h"
-#include "printing/buildflags/buildflags.h"
 
 namespace mojo {
+class BinderMap;
 class ServiceFactory;
-}
+}  // namespace mojo
 
 namespace electron {
 
@@ -26,6 +24,7 @@ class ElectronContentUtilityClient : public content::ContentUtilityClient {
   ElectronContentUtilityClient& operator=(const ElectronContentUtilityClient&) =
       delete;
 
+  // content::ContentUtilityClient
   void ExposeInterfacesToBrowser(mojo::BinderMap* binders) override;
   void RegisterMainThreadServices(mojo::ServiceFactory& services) override;
   void RegisterIOThreadServices(mojo::ServiceFactory& services) override;

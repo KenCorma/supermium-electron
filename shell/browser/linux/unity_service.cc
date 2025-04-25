@@ -9,28 +9,23 @@
 
 #include <string>
 
-#include "base/environment.h"
-#include "base/nix/xdg_util.h"
-
 // Unity data typedefs.
-typedef struct _UnityInspector UnityInspector;
-typedef UnityInspector* (*unity_inspector_get_default_func)();
-typedef gboolean (*unity_inspector_get_unity_running_func)(
-    UnityInspector* self);
+using UnityInspector = struct _UnityInspector;
+using unity_inspector_get_default_func = UnityInspector* (*)();
+using unity_inspector_get_unity_running_func =
+    gboolean (*)(UnityInspector* self);
 
-typedef struct _UnityLauncherEntry UnityLauncherEntry;
-typedef UnityLauncherEntry* (*unity_launcher_entry_get_for_desktop_id_func)(
-    const gchar* desktop_id);
-typedef void (*unity_launcher_entry_set_count_func)(UnityLauncherEntry* self,
-                                                    gint64 value);
-typedef void (*unity_launcher_entry_set_count_visible_func)(
-    UnityLauncherEntry* self,
-    gboolean value);
-typedef void (*unity_launcher_entry_set_progress_func)(UnityLauncherEntry* self,
-                                                       gdouble value);
-typedef void (*unity_launcher_entry_set_progress_visible_func)(
-    UnityLauncherEntry* self,
-    gboolean value);
+using UnityLauncherEntry = struct _UnityLauncherEntry;
+using unity_launcher_entry_get_for_desktop_id_func =
+    UnityLauncherEntry* (*)(const gchar* desktop_id);
+using unity_launcher_entry_set_count_func = void (*)(UnityLauncherEntry* self,
+                                                     gint64 value);
+using unity_launcher_entry_set_count_visible_func =
+    void (*)(UnityLauncherEntry* self, gboolean value);
+using unity_launcher_entry_set_progress_func =
+    void (*)(UnityLauncherEntry* self, gdouble value);
+using unity_launcher_entry_set_progress_visible_func =
+    void (*)(UnityLauncherEntry* self, gboolean value);
 
 namespace {
 
@@ -51,20 +46,9 @@ unity_launcher_entry_set_progress_visible_func entry_set_progress_visible =
     nullptr;
 
 void EnsureLibUnityLoaded() {
-  using base::nix::GetDesktopEnvironment;
-
   if (attempted_load)
     return;
   attempted_load = true;
-
-  auto env = base::Environment::Create();
-  base::nix::DesktopEnvironment desktop_env = GetDesktopEnvironment(env.get());
-
-  // The "icon-tasks" KDE task manager also honors Unity Launcher API.
-  if (desktop_env != base::nix::DESKTOP_ENVIRONMENT_UNITY &&
-      desktop_env != base::nix::DESKTOP_ENVIRONMENT_KDE4 &&
-      desktop_env != base::nix::DESKTOP_ENVIRONMENT_KDE5)
-    return;
 
   // Ubuntu still hasn't given us a nice libunity.so symlink.
   void* unity_lib = dlopen("libunity.so.4", RTLD_LAZY);

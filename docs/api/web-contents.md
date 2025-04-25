@@ -242,8 +242,9 @@ Returns:
   * `isSameDocument` boolean - This event does not fire for same document navigations using window.history api and reference fragment navigations.
     This property is always set to `false` for this event.
   * `isMainFrame` boolean - True if the navigation is taking place in a main frame.
-  * `frame` WebFrameMain - The frame to be navigated.
-  * `initiator` WebFrameMain (optional) - The frame which initiated the
+  * `frame` WebFrameMain | null - The frame to be navigated.
+    May be `null` if accessed after the frame has either navigated or been destroyed.
+  * `initiator` WebFrameMain | null (optional) - The frame which initiated the
     navigation, which can be a parent frame (e.g. via `window.open` with a
     frame's name), or null if the navigation was not initiated by a frame. This
     can also be null if the initiating frame was deleted before the event was
@@ -275,8 +276,9 @@ Returns:
   * `isSameDocument` boolean - This event does not fire for same document navigations using window.history api and reference fragment navigations.
     This property is always set to `false` for this event.
   * `isMainFrame` boolean - True if the navigation is taking place in a main frame.
-  * `frame` WebFrameMain - The frame to be navigated.
-  * `initiator` WebFrameMain (optional) - The frame which initiated the
+  * `frame` WebFrameMain | null - The frame to be navigated.
+    May be `null` if accessed after the frame has either navigated or been destroyed.
+  * `initiator` WebFrameMain | null (optional) - The frame which initiated the
     navigation, which can be a parent frame (e.g. via `window.open` with a
     frame's name), or null if the navigation was not initiated by a frame. This
     can also be null if the initiating frame was deleted before the event was
@@ -306,8 +308,9 @@ Returns:
     document. Examples of same document navigations are reference fragment
     navigations, pushState/replaceState, and same page history navigation.
   * `isMainFrame` boolean - True if the navigation is taking place in a main frame.
-  * `frame` WebFrameMain - The frame to be navigated.
-  * `initiator` WebFrameMain (optional) - The frame which initiated the
+  * `frame` WebFrameMain | null - The frame to be navigated.
+    May be `null` if accessed after the frame has either navigated or been destroyed.
+  * `initiator` WebFrameMain | null (optional) - The frame which initiated the
     navigation, which can be a parent frame (e.g. via `window.open` with a
     frame's name), or null if the navigation was not initiated by a frame. This
     can also be null if the initiating frame was deleted before the event was
@@ -330,8 +333,9 @@ Returns:
     document. Examples of same document navigations are reference fragment
     navigations, pushState/replaceState, and same page history navigation.
   * `isMainFrame` boolean - True if the navigation is taking place in a main frame.
-  * `frame` WebFrameMain - The frame to be navigated.
-  * `initiator` WebFrameMain (optional) - The frame which initiated the
+  * `frame` WebFrameMain | null - The frame to be navigated.
+    May be `null` if accessed after the frame has either navigated or been destroyed.
+  * `initiator` WebFrameMain | null (optional) - The frame which initiated the
     navigation, which can be a parent frame (e.g. via `window.open` with a
     frame's name), or null if the navigation was not initiated by a frame. This
     can also be null if the initiating frame was deleted before the event was
@@ -361,8 +365,9 @@ Returns:
     document. Examples of same document navigations are reference fragment
     navigations, pushState/replaceState, and same page history navigation.
   * `isMainFrame` boolean - True if the navigation is taking place in a main frame.
-  * `frame` WebFrameMain - The frame to be navigated.
-  * `initiator` WebFrameMain (optional) - The frame which initiated the
+  * `frame` WebFrameMain | null - The frame to be navigated.
+    May be `null` if accessed after the frame has either navigated or been destroyed.
+  * `initiator` WebFrameMain | null (optional) - The frame which initiated the
     navigation, which can be a parent frame (e.g. via `window.open` with a
     frame's name), or null if the navigation was not initiated by a frame. This
     can also be null if the initiating frame was deleted before the event was
@@ -743,7 +748,8 @@ Returns:
 * `params` Object
   * `x` Integer - x coordinate.
   * `y` Integer - y coordinate.
-  * `frame` WebFrameMain - Frame from which the context menu was invoked.
+  * `frame` WebFrameMain | null - Frame from which the context menu was invoked.
+    May be `null` if accessed after the frame has either navigated or been destroyed.
   * `linkURL` string - URL of the link that encloses the node the context menu
     was invoked on.
   * `linkText` string - Text associated with the link. May be an empty
@@ -869,12 +875,12 @@ app.whenReady().then(() => {
 
 Returns:
 
-* `event` Event
+* `details` Event\<\>
+  * `texture` [OffscreenSharedTexture](structures/offscreen-shared-texture.md) (optional) _Experimental_ - The GPU shared texture of the frame, when `webPreferences.offscreen.useSharedTexture` is `true`.
 * `dirtyRect` [Rectangle](structures/rectangle.md)
 * `image` [NativeImage](native-image.md) - The image data of the whole frame.
 
-Emitted when a new frame is generated. Only the dirty area is passed in the
-buffer.
+Emitted when a new frame is generated. Only the dirty area is passed in the buffer.
 
 ```js
 const { BrowserWindow } = require('electron')
@@ -882,6 +888,33 @@ const { BrowserWindow } = require('electron')
 const win = new BrowserWindow({ webPreferences: { offscreen: true } })
 win.webContents.on('paint', (event, dirty, image) => {
   // updateBitmap(dirty, image.getBitmap())
+})
+win.loadURL('https://github.com')
+```
+
+When using shared texture (set `webPreferences.offscreen.useSharedTexture` to `true`) feature, you can pass the texture handle to external rendering pipeline without the overhead of
+copying data between CPU and GPU memory, with Chromium's hardware acceleration support. This feature is helpful for high-performance rendering scenarios.
+
+Only a limited number of textures can exist at the same time, so it's important that you call `texture.release()` as soon as you're done with the texture.
+By managing the texture lifecycle by yourself, you can safely pass the `texture.textureInfo` to other processes through IPC.
+
+```js
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({ webPreferences: { offscreen: { useSharedTexture: true } } })
+win.webContents.on('paint', async (e, dirty, image) => {
+  if (e.texture) {
+    // By managing lifecycle yourself, you can handle the event in async handler or pass the `e.texture.textureInfo`
+    // to other processes (not `e.texture`, the `e.texture.release` function is not passable through IPC).
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    // You can send the native texture handle to native code for importing into your rendering pipeline.
+    // For example: https://github.com/electron/electron/tree/main/spec/fixtures/native-addon/osr-gpu
+    // importTextureHandle(dirty, e.texture.textureInfo)
+
+    // You must call `e.texture.release()` as soon as possible, before the underlying frame pool is drained.
+    e.texture.release()
+  }
 })
 win.loadURL('https://github.com')
 ```
@@ -922,11 +955,17 @@ Emitted when a `<webview>` has been attached to this web contents.
 
 Returns:
 
-* `event` Event
-* `level` Integer - The log level, from 0 to 3. In order it matches `verbose`, `info`, `warning` and `error`.
-* `message` string - The actual console message
-* `line` Integer - The line number of the source that triggered this console message
-* `sourceId` string
+* `details` Event\<\>
+  * `message` string - Message text
+  * `level` string - Message severity
+    Possible values include `info`, `warning`, `error`, and `debug`.
+  * `lineNumber` Integer - Line number in the log source
+  * `sourceId` string - URL of the log source
+  * `frame` WebFrameMain - Frame that logged the message
+* `level` Integer _Deprecated_ - The log level, from 0 to 3. In order it matches `verbose`, `info`, `warning` and `error`.
+* `message` string _Deprecated_ - The actual console message
+* `line` Integer _Deprecated_ - The line number of the source that triggered this console message
+* `sourceId` string _Deprecated_
 
 Emitted when the associated window logs a console message.
 
@@ -983,7 +1022,8 @@ Returns:
 
 * `event` Event
 * `details` Object
-  * `frame` WebFrameMain
+  * `frame` WebFrameMain | null - The created frame.
+    May be `null` if accessed after the frame has either navigated or been destroyed.
 
 Emitted when the [mainFrame](web-contents.md#contentsmainframe-readonly), an `<iframe>`, or a nested `<iframe>` is loaded within the page.
 
@@ -1124,43 +1164,123 @@ Reloads the current web page.
 
 Reloads current page and ignores cache.
 
-#### `contents.canGoBack()`
+#### `contents.canGoBack()` _Deprecated_
+
+<!--
+```YAML history
+deprecated:
+  - pr-url: https://github.com/electron/electron/pull/41752
+    breaking-changes-header: deprecated-clearhistory-cangoback-goback-cangoforward-goforward-gotoindex-cangotooffset-gotooffset-on-webcontents
+```
+-->
 
 Returns `boolean` - Whether the browser can go back to previous web page.
 
-#### `contents.canGoForward()`
+**Deprecated:** Should use the new [`contents.navigationHistory.canGoBack`](navigation-history.md#navigationhistorycangoback) API.
+
+#### `contents.canGoForward()` _Deprecated_
+
+<!--
+```YAML history
+deprecated:
+  - pr-url: https://github.com/electron/electron/pull/41752
+    breaking-changes-header: deprecated-clearhistory-cangoback-goback-cangoforward-goforward-gotoindex-cangotooffset-gotooffset-on-webcontents
+```
+-->
 
 Returns `boolean` - Whether the browser can go forward to next web page.
 
-#### `contents.canGoToOffset(offset)`
+**Deprecated:** Should use the new [`contents.navigationHistory.canGoForward`](navigation-history.md#navigationhistorycangoforward) API.
+
+#### `contents.canGoToOffset(offset)` _Deprecated_
+
+<!--
+```YAML history
+deprecated:
+  - pr-url: https://github.com/electron/electron/pull/41752
+    breaking-changes-header: deprecated-clearhistory-cangoback-goback-cangoforward-goforward-gotoindex-cangotooffset-gotooffset-on-webcontents
+```
+-->
 
 * `offset` Integer
 
 Returns `boolean` - Whether the web page can go to `offset`.
 
-#### `contents.clearHistory()`
+**Deprecated:** Should use the new [`contents.navigationHistory.canGoToOffset`](navigation-history.md#navigationhistorycangotooffsetoffset) API.
+
+#### `contents.clearHistory()` _Deprecated_
+
+<!--
+```YAML history
+deprecated:
+  - pr-url: https://github.com/electron/electron/pull/41752
+    breaking-changes-header: deprecated-clearhistory-cangoback-goback-cangoforward-goforward-gotoindex-cangotooffset-gotooffset-on-webcontents
+```
+-->
 
 Clears the navigation history.
 
-#### `contents.goBack()`
+**Deprecated:** Should use the new [`contents.navigationHistory.clear`](navigation-history.md#navigationhistoryclear) API.
+
+#### `contents.goBack()` _Deprecated_
+
+<!--
+```YAML history
+deprecated:
+  - pr-url: https://github.com/electron/electron/pull/41752
+    breaking-changes-header: deprecated-clearhistory-cangoback-goback-cangoforward-goforward-gotoindex-cangotooffset-gotooffset-on-webcontents
+```
+-->
 
 Makes the browser go back a web page.
 
-#### `contents.goForward()`
+**Deprecated:** Should use the new [`contents.navigationHistory.goBack`](navigation-history.md#navigationhistorygoback) API.
+
+#### `contents.goForward()` _Deprecated_
+
+<!--
+```YAML history
+deprecated:
+  - pr-url: https://github.com/electron/electron/pull/41752
+    breaking-changes-header: deprecated-clearhistory-cangoback-goback-cangoforward-goforward-gotoindex-cangotooffset-gotooffset-on-webcontents
+```
+-->
 
 Makes the browser go forward a web page.
 
-#### `contents.goToIndex(index)`
+**Deprecated:** Should use the new [`contents.navigationHistory.goForward`](navigation-history.md#navigationhistorygoforward) API.
+
+#### `contents.goToIndex(index)` _Deprecated_
+
+<!--
+```YAML history
+deprecated:
+  - pr-url: https://github.com/electron/electron/pull/41752
+    breaking-changes-header: deprecated-clearhistory-cangoback-goback-cangoforward-goforward-gotoindex-cangotooffset-gotooffset-on-webcontents
+```
+-->
 
 * `index` Integer
 
 Navigates browser to the specified absolute web page index.
 
-#### `contents.goToOffset(offset)`
+**Deprecated:** Should use the new [`contents.navigationHistory.goToIndex`](navigation-history.md#navigationhistorygotoindexindex) API.
+
+#### `contents.goToOffset(offset)` _Deprecated_
+
+<!--
+```YAML history
+deprecated:
+  - pr-url: https://github.com/electron/electron/pull/41752
+    breaking-changes-header: deprecated-clearhistory-cangoback-goback-cangoforward-goforward-gotoindex-cangotooffset-gotooffset-on-webcontents
+```
+-->
 
 * `offset` Integer
 
 Navigates to the specified offset from the "current entry".
+
+**Deprecated:** Should use the new [`contents.navigationHistory.goToOffset`](navigation-history.md#navigationhistorygotooffsetoffset) API.
 
 #### `contents.isCrashed()`
 
@@ -1286,7 +1406,7 @@ Ignore application menu shortcuts while this web contents is focused.
 
 #### `contents.setWindowOpenHandler(handler)`
 
-* `handler` Function\<\{action: 'deny'\} | \{action: 'allow', outlivesOpener?: boolean, overrideBrowserWindowOptions?: BrowserWindowConstructorOptions\}\>
+* `handler` Function\<[WindowOpenHandlerResponse](structures/window-open-handler-response.md)\>
   * `details` Object
     * `url` string - The _resolved_ version of the URL passed to `window.open()`. e.g. opening a window with `window.open('foo')` will yield something like `https://the-origin/the/current/path/foo`.
     * `frameName` string - Name of the window provided in `window.open()`
@@ -1301,11 +1421,8 @@ Ignore application menu shortcuts while this web contents is focused.
       be set. If no post data is to be sent, the value will be `null`. Only defined
       when the window is being created by a form that set `target=_blank`.
 
-  Returns `{action: 'deny'} | {action: 'allow', outlivesOpener?: boolean, overrideBrowserWindowOptions?: BrowserWindowConstructorOptions}` - `deny` cancels the creation of the new
-  window. `allow` will allow the new window to be created. Specifying `overrideBrowserWindowOptions` allows customization of the created window.
-  By default, child windows are closed when their opener is closed. This can be
-  changed by specifying `outlivesOpener: true`, in which case the opened window
-  will not be closed when its opener is closed.
+  Returns `WindowOpenHandlerResponse` - When set to `{ action: 'deny' }` cancels the creation of the new
+  window. `{ action: 'allow' }` will allow the new window to be created.
   Returning an unrecognized value such as a null, undefined, or an object
   without a recognized 'action' value will result in a console error and have
   the same effect as returning `{action: 'deny'}`.
@@ -1315,6 +1432,26 @@ by `window.open()`, a link with `target="_blank"`, shift+clicking on a link, or
 submitting a form with `<form target="_blank">`. See
 [`window.open()`](window-open.md) for more details and how to use this in
 conjunction with `did-create-window`.
+
+An example showing how to customize the process of new `BrowserWindow` creation to be `BrowserView` attached to main window instead:
+
+```js
+const { BrowserView, BrowserWindow } = require('electron')
+
+const mainWindow = new BrowserWindow()
+
+mainWindow.webContents.setWindowOpenHandler((details) => {
+  return {
+    action: 'allow',
+    createWindow: (options) => {
+      const browserView = new BrowserView(options)
+      mainWindow.addBrowserView(browserView)
+      browserView.setBounds({ x: 0, y: 0, width: 640, height: 480 })
+      return browserView.webContents
+    }
+  }
+})
+```
 
 #### `contents.setAudioMuted(muted)`
 
@@ -1533,7 +1670,7 @@ If you would like the page to stay hidden, you should ensure that `stayHidden` i
 #### `contents.isBeingCaptured()`
 
 Returns `boolean` - Whether this page is being captured. It returns true when the capturer count
-is large then 0.
+is greater than 0.
 
 #### `contents.getPrintersAsync()`
 
@@ -2115,6 +2252,15 @@ when the page becomes backgrounded. This also affects the Page Visibility API.
 
 #### `contents.setBackgroundThrottling(allowed)`
 
+<!--
+```YAML history
+changes:
+  - pr-url: https://github.com/electron/electron/pull/38924
+    description: "`WebContents.backgroundThrottling` set to false affects all `WebContents` in the host `BrowserWindow`"
+    breaking-changes-header: behavior-changed-webcontentsbackgroundthrottling-set-to-false-affects-all-webcontents-in-the-host-browserwindow
+```
+-->
+
 * `allowed` boolean
 
 Controls whether or not this WebContents will throttle animations and timers
@@ -2225,6 +2371,15 @@ A [`Debugger`](debugger.md) instance for this webContents.
 
 #### `contents.backgroundThrottling`
 
+<!--
+```YAML history
+changes:
+  - pr-url: https://github.com/electron/electron/pull/38924
+    description: "`WebContents.backgroundThrottling` set to false affects all `WebContents` in the host `BrowserWindow`"
+    breaking-changes-header: behavior-changed-webcontentsbackgroundthrottling-set-to-false-affects-all-webcontents-in-the-host-browserwindow
+```
+-->
+
 A `boolean` property that determines whether or not this WebContents will throttle animations and timers
 when the page becomes backgrounded. This also affects the Page Visibility API.
 
@@ -2234,7 +2389,7 @@ A [`WebFrameMain`](web-frame-main.md) property that represents the top frame of 
 
 #### `contents.opener` _Readonly_
 
-A [`WebFrameMain`](web-frame-main.md) property that represents the frame that opened this WebContents, either
+A [`WebFrameMain | null`](web-frame-main.md) property that represents the frame that opened this WebContents, either
 with open(), or by navigating a link with a target attribute.
 
 [keyboardevent]: https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent

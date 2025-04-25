@@ -12,12 +12,13 @@
 #include "base/numerics/safe_conversions.h"
 #include "base/win/windows_version.h"
 #include "chrome/grit/theme_resources.h"
+#include "shell/browser/native_window_views.h"
 #include "shell/browser/ui/views/win_frame_view.h"
 #include "shell/common/color_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/theme_provider.h"
 #include "ui/gfx/animation/tween.h"
-#include "ui/gfx/color_utils.h"
+#include "ui/gfx/canvas.h"
 #include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gfx/scoped_canvas.h"
 
@@ -46,7 +47,8 @@ std::unique_ptr<WinIconPainter> WinCaptionButton::CreateIconPainter() {
   return std::make_unique<WinIconPainter>();
 }
 
-gfx::Size WinCaptionButton::CalculatePreferredSize() const {
+gfx::Size WinCaptionButton::CalculatePreferredSize(
+    const views::SizeBounds& available_size) const {
   // TODO(bsep): The sizes in this function are for 1x device scale and don't
   // match Windows button sizes at hidpi.
 
@@ -138,7 +140,6 @@ int WinCaptionButton::GetButtonDisplayOrderIndex() const {
       break;
     default:
       NOTREACHED();
-      return 0;
   }
 
   // Reverse the ordering if we're in RTL mode
@@ -207,7 +208,6 @@ void WinCaptionButton::PaintSymbol(gfx::Canvas* canvas) {
 
     default:
       NOTREACHED();
-      return;
   }
 }
 

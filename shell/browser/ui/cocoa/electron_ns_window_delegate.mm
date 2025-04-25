@@ -221,6 +221,12 @@ using FullScreenTransitionState =
   [super windowDidResize:notification];
   shell_->NotifyWindowResize();
   shell_->RedrawTrafficLights();
+  // When reduce motion is enabled windowDidResize is only called once after
+  // a resize and windowDidEndLiveResize is not called. So we need to call
+  // handleZoomEnd here as well.
+  if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
+    [self handleZoomEnd];
+  }
 }
 
 - (void)windowWillMove:(NSNotification*)notification {
@@ -276,9 +282,7 @@ using FullScreenTransitionState =
   return YES;
 }
 
-- (void)windowDidEndLiveResize:(NSNotification*)notification {
-  resizingHorizontally_.reset();
-  shell_->NotifyWindowResized();
+- (void)handleZoomEnd {
   if (is_zooming_) {
     if (shell_->IsMaximized())
       shell_->NotifyWindowMaximize();
@@ -286,6 +290,12 @@ using FullScreenTransitionState =
       shell_->NotifyWindowUnmaximize();
     is_zooming_ = false;
   }
+}
+
+- (void)windowDidEndLiveResize:(NSNotification*)notification {
+  resizingHorizontally_.reset();
+  shell_->NotifyWindowResized();
+  [self handleZoomEnd];
 }
 
 - (void)windowWillEnterFullScreen:(NSNotification*)notification {
@@ -365,6 +375,19 @@ using FullScreenTransitionState =
       shell_->GetNativeWindow());
   auto* bridged_view = bridge_host->GetInProcessNSWindowBridge();
   bridged_view->OnWindowWillClose();
+
+  // Native widget and its compositor have been destroyed upon close. We need
+  // to detach contents view in order to prevent reusing its layer without
+  // compositor in the `WebContentsViewMac::CreateViewForWidget`, leading to
+  // `DCHECK` failure in `BrowserCompositorMac::SetParentUiLayer`.
+  auto* contents_view =
+      static_cast<views::WidgetDelegate*>(shell_)->GetContentsView();
+  if (contents_view) {
+    auto* parent = contents_view->parent();
+    if (parent) {
+      parent->RemoveChildView(contents_view);
+    }
+  }
 }
 
 - (BOOL)windowShouldClose:(id)window {

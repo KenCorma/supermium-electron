@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "base/memory/weak_ptr.h"
+#include "base/observer_list.h"
 #include "base/scoped_observation.h"
 #include "content/public/browser/serial_delegate.h"
 #include "shell/browser/serial/serial_chooser_context.h"
@@ -20,7 +21,7 @@ namespace electron {
 class SerialChooserController;
 
 class ElectronSerialDelegate : public content::SerialDelegate,
-                               public SerialChooserContext::PortObserver {
+                               private SerialChooserContext::PortObserver {
  public:
   ElectronSerialDelegate();
   ~ElectronSerialDelegate() override;
@@ -29,6 +30,7 @@ class ElectronSerialDelegate : public content::SerialDelegate,
   ElectronSerialDelegate(const ElectronSerialDelegate&) = delete;
   ElectronSerialDelegate& operator=(const ElectronSerialDelegate&) = delete;
 
+  // content::SerialDelegate:
   std::unique_ptr<content::SerialChooser> RunChooser(
       content::RenderFrameHost* frame,
       std::vector<blink::mojom::SerialPortFilterPtr> filters,

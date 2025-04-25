@@ -9,14 +9,12 @@
 #include "base/logging.h"
 #include "base/strings/string_util_win.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/win/windows_version.h"
 #include "shell/browser/ui/win/notify_icon_host.h"
-#include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/base/mojom/menu_source_type.mojom.h"
 #include "ui/display/screen.h"
 #include "ui/display/win/screen_win.h"
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/rect.h"
-#include "ui/gfx/image/image.h"
 #include "ui/views/controls/menu/menu_runner.h"
 
 namespace {
@@ -131,7 +129,7 @@ void NotifyIcon::ResetIcon() {
 }
 
 void NotifyIcon::SetImage(HICON image) {
-  icon_ = base::win::ScopedHICON(CopyIcon(image));
+  icon_ = base::win::ScopedGDIObject<HICON>(CopyIcon(image));
 
   // Create the icon.
   NOTIFYICONDATA icon_data;
@@ -230,7 +228,7 @@ void NotifyIcon::PopUpContextMenu(const gfx::Point& pos,
   }
   menu_runner_->RunMenuAt(nullptr, nullptr, rect,
                           views::MenuAnchorPosition::kTopLeft,
-                          ui::MENU_SOURCE_MOUSE);
+                          ui::mojom::MenuSourceType::kMouse);
 }
 
 void NotifyIcon::CloseContextMenu() {

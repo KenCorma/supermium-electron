@@ -8,15 +8,16 @@
 
 #include "base/win/atl.h"  // Must be before UIAutomationCore.h
 #include "base/win/scoped_handle.h"
+#include "base/win/windows_version.h"
 #include "content/public/browser/browser_accessibility_state.h"
+#include "shell/browser/api/electron_api_web_contents.h"
 #include "shell/browser/browser.h"
 #include "shell/browser/native_window_views.h"
 #include "shell/browser/ui/views/root_view.h"
 #include "shell/browser/ui/views/win_frame_view.h"
 #include "shell/common/electron_constants.h"
 #include "ui/display/display.h"
-#include "ui/display/win/screen_win.h"
-#include "ui/gfx/geometry/insets.h"
+#include "ui/display/screen.h"
 #include "ui/gfx/geometry/resize_utils.h"
 #include "ui/views/widget/native_widget_private.h"
 
@@ -28,8 +29,26 @@ namespace electron {
 
 namespace {
 
+// Convert Win32 WM_QUERYENDSESSIONS to strings.
+const std::vector<std::string> EndSessionToStringVec(LPARAM end_session_id) {
+  std::vector<std::string> params;
+  if (end_session_id == 0) {
+    params.push_back("shutdown");
+    return params;
+  }
+
+  if (end_session_id & ENDSESSION_CLOSEAPP)
+    params.push_back("close-app");
+  if (end_session_id & ENDSESSION_CRITICAL)
+    params.push_back("critical");
+  if (end_session_id & ENDSESSION_LOGOFF)
+    params.push_back("logoff");
+
+  return params;
+}
+
 // Convert Win32 WM_APPCOMMANDS to strings.
-const char* AppCommandToString(int command_id) {
+constexpr std::string_view AppCommandToString(int command_id) {
   switch (command_id) {
     case APPCOMMAND_BROWSER_BACKWARD:
       return kBrowserBackward;
@@ -205,31 +224,11 @@ bool IsScreenReaderActive() {
 
 }  // namespace
 
-std::set<NativeWindowViews*> NativeWindowViews::forwarding_windows_;
 HHOOK NativeWindowViews::mouse_hook_ = nullptr;
 
-void NativeWindowViews::Maximize() {
-  // Only use Maximize() when window is NOT transparent style
-  if (!transparent()) {
-    if (IsVisible()) {
-      widget()->Maximize();
-    } else {
-      widget()->native_widget_private()->Show(ui::SHOW_STATE_MAXIMIZED,
-                                              gfx::Rect());
-      NotifyWindowShow();
-    }
-  } else {
-    restore_bounds_ = GetBounds();
-    auto display = display::Screen::GetScreen()->GetDisplayNearestWindow(
-        GetNativeWindow());
-    SetBounds(display.work_area(), false);
-    NotifyWindowMaximize();
-  }
-}
-
 bool NativeWindowViews::ExecuteWindowsCommand(int command_id) {
-  std::string command = AppCommandToString(command_id);
-  NotifyWindowExecuteAppCommand(command);
+  const auto command_name = AppCommandToString(command_id);
+  NotifyWindowExecuteAppCommand(command_name);
 
   return false;
 }
@@ -290,12 +289,8 @@ bool NativeWindowViews::PreHandleMSG(UINT message,
       return false;
     }
     case WM_RBUTTONUP: {
-      if (!has_frame()) {
-        bool prevent_default = false;
-        NotifyWindowSystemContextMenu(GET_X_LPARAM(l_param),
-                                      GET_Y_LPARAM(l_param), &prevent_default);
-        return prevent_default;
-      }
+      if (!has_frame())
+        electron::api::WebContents::SetDisableDraggableRegions(false);
       return false;
     }
     case WM_GETMINMAXINFO: {
@@ -390,9 +385,20 @@ bool NativeWindowViews::PreHandleMSG(UINT message,
       }
       return false;
     }
+    case WM_QUERYENDSESSION: {
+      bool prevent_default = false;
+      std::vector<std::string> reasons = EndSessionToStringVec(l_param);
+      NotifyWindowQueryEndSession(reasons, &prevent_default);
+      // Result should be TRUE by default, otherwise WM_ENDSESSION will not be
+      // fired in some cases: More:
+      // https://learn.microsoft.com/en-us/windows/win32/rstmgr/guidelines-for-applications
+      *result = !prevent_default;
+      return prevent_default;
+    }
     case WM_ENDSESSION: {
+      std::vector<std::string> reasons = EndSessionToStringVec(l_param);
       if (w_param) {
-        NotifyWindowEndSession();
+        NotifyWindowEndSession(reasons);
       }
       return false;
     }
@@ -410,10 +416,16 @@ bool NativeWindowViews::PreHandleMSG(UINT message,
       return false;
     }
     case WM_CONTEXTMENU: {
-      bool prevent_default = false;
-      NotifyWindowSystemContextMenu(GET_X_LPARAM(l_param),
-                                    GET_Y_LPARAM(l_param), &prevent_default);
-      return prevent_default;
+      // We don't want to trigger system-context-menu here if we have a
+      // frameless window as it'll already be emitted in
+      // ElectronDesktopWindowTreeHostWin::HandleMouseEvent.
+      if (has_frame()) {
+        bool prevent_default = false;
+        NotifyWindowSystemContextMenu(GET_X_LPARAM(l_param),
+                                      GET_Y_LPARAM(l_param), &prevent_default);
+        return prevent_default;
+      }
+      return false;
     }
     case WM_SYSCOMMAND: {
       // Mask is needed to account for double clicking title bar to maximize
@@ -459,31 +471,31 @@ void NativeWindowViews::HandleSizeEvent(WPARAM w_param, LPARAM l_param) {
       // Note that SIZE_MAXIMIZED and SIZE_MINIMIZED might be emitted for
       // multiple times for one resize because of the SetWindowPlacement call.
       if (w_param == SIZE_MAXIMIZED &&
-          last_window_state_ != ui::SHOW_STATE_MAXIMIZED) {
-        if (last_window_state_ == ui::SHOW_STATE_MINIMIZED)
+          last_window_state_ != ui::mojom::WindowShowState::kMaximized) {
+        if (last_window_state_ == ui::mojom::WindowShowState::kMinimized)
           NotifyWindowRestore();
-        last_window_state_ = ui::SHOW_STATE_MAXIMIZED;
+        last_window_state_ = ui::mojom::WindowShowState::kMaximized;
         NotifyWindowMaximize();
         ResetWindowControls();
       } else if (w_param == SIZE_MINIMIZED &&
-                 last_window_state_ != ui::SHOW_STATE_MINIMIZED) {
-        last_window_state_ = ui::SHOW_STATE_MINIMIZED;
+                 last_window_state_ != ui::mojom::WindowShowState::kMinimized) {
+        last_window_state_ = ui::mojom::WindowShowState::kMinimized;
         NotifyWindowMinimize();
       }
       break;
     }
     case SIZE_RESTORED: {
       switch (last_window_state_) {
-        case ui::SHOW_STATE_MAXIMIZED:
-          last_window_state_ = ui::SHOW_STATE_NORMAL;
+        case ui::mojom::WindowShowState::kMaximized:
+          last_window_state_ = ui::mojom::WindowShowState::kNormal;
           NotifyWindowUnmaximize();
           break;
-        case ui::SHOW_STATE_MINIMIZED:
+        case ui::mojom::WindowShowState::kMinimized:
           if (IsFullscreen()) {
-            last_window_state_ = ui::SHOW_STATE_FULLSCREEN;
+            last_window_state_ = ui::mojom::WindowShowState::kFullscreen;
             NotifyWindowEnterFullScreen();
           } else {
-            last_window_state_ = ui::SHOW_STATE_NORMAL;
+            last_window_state_ = ui::mojom::WindowShowState::kNormal;
             NotifyWindowRestore();
           }
           break;
@@ -505,6 +517,24 @@ void NativeWindowViews::ResetWindowControls() {
     auto* frame_view = static_cast<WinFrameView*>(ncv->frame_view());
     frame_view->caption_button_container()->ResetWindowControls();
   }
+}
+
+// Windows with |backgroundMaterial| expand to the same dimensions and
+// placement as the display to approximate maximization - unless we remove
+// rounded corners there will be a gap between the window and the display
+// at the corners noticable to users.
+void NativeWindowViews::SetRoundedCorners(bool rounded) {
+  // DWMWA_WINDOW_CORNER_PREFERENCE is supported after Windows 11 Build 22000.
+  if (base::win::GetVersion() < base::win::Version::WIN11)
+    return;
+
+  DWM_WINDOW_CORNER_PREFERENCE round_pref =
+      rounded ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
+  HRESULT result = DwmSetWindowAttribute(GetAcceleratedWidget(),
+                                         DWMWA_WINDOW_CORNER_PREFERENCE,
+                                         &round_pref, sizeof(round_pref));
+  if (FAILED(result))
+    LOG(WARNING) << "Failed to set rounded corners to " << rounded;
 }
 
 void NativeWindowViews::SetForwardMouseMessages(bool forward) {

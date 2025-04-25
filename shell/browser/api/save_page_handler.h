@@ -10,7 +10,7 @@
 #include "content/public/browser/download_manager.h"
 #include "content/public/browser/save_page_type.h"
 #include "shell/common/gin_helper/promise.h"
-#include "v8/include/v8.h"
+#include "v8/include/v8-forward.h"
 
 namespace base {
 class FilePath;
@@ -23,8 +23,8 @@ class WebContents;
 namespace electron::api {
 
 // A self-destroyed class for handling save page request.
-class SavePageHandler : public content::DownloadManager::Observer,
-                        public download::DownloadItem::Observer {
+class SavePageHandler : private content::DownloadManager::Observer,
+                        private download::DownloadItem::Observer {
  public:
   SavePageHandler(content::WebContents* web_contents,
                   gin_helper::Promise<void> promise);

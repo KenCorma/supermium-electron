@@ -9,26 +9,29 @@ be created for each child process, despite logs being redirected to a
 file.
 
 diff --git a/content/app/content_main.cc b/content/app/content_main.cc
-index fe6ffe9a1b9b39e077e6bdb60e4802e040a2f078..9c25426fa65ecf0b931972cf814329a0a416324c 100644
+index 54dfbaa6df6939418acea2f539e899425f675f83..0304c4a009e53a2a5c457b432093656db5d8d946 100644
 --- a/content/app/content_main.cc
 +++ b/content/app/content_main.cc
-@@ -307,14 +307,13 @@ RunContentProcess(ContentMainParams params,
-     }
+@@ -324,16 +324,14 @@ NO_STACK_PROTECTOR int RunContentProcess(
  
  #if BUILDFLAG(IS_WIN)
--    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+     base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
 -    if (command_line->HasSwitch(switches::kHeadless)) {
 -      // When running in headless mode we want stdio routed however if
 -      // console does not exist we should not create one.
 -      base::RouteStdioToConsole(/*create_console_if_not_found*/ false);
 -    } else if (command_line->HasSwitch(switches::kEnableLogging)) {
--      // Route stdio to parent console (if any) or create one.
--      base::RouteStdioToConsole(/*create_console_if_not_found*/ true);
-+    auto const* cmd_line = base::CommandLine::ForCurrentProcess();
+-      // Route stdio to parent console (if any) or create one, do not create a
+-      // console in children if handles are being passed.
+-      bool create_console = command_line->GetSwitchValueASCII(
+-                                switches::kEnableLogging) != "handle";
+-      base::RouteStdioToConsole(create_console);
++    // Route stdio to parent console (if any) or create one.
 +    bool const log_to_stderr =
-+        cmd_line->HasSwitch(switches::kEnableLogging) &&
-+        cmd_line->GetSwitchValueASCII(switches::kEnableLogging) != "file" &&
-+        !cmd_line->HasSwitch(switches::kLogFile);
++        command_line->HasSwitch(switches::kEnableLogging) &&
++        command_line->GetSwitchValueASCII(switches::kEnableLogging) != "file" &&
++        !command_line->HasSwitch(switches::kLogFile) &&
++        command_line->GetSwitchValueASCII(switches::kEnableLogging) != "handle";
 +    if (log_to_stderr) {
 +      base::RouteStdioToConsole(true);
      }

@@ -14,7 +14,6 @@
 #include "components/strings/grit/components_strings.h"
 #include "components/zoom/page_zoom_constants.h"
 #include "electron/buildflags/buildflags.h"
-#include "printing/buildflags/buildflags.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/webui/web_ui_util.h"
 
@@ -56,10 +55,8 @@ ExtensionFunction::ResponseAction ResourcesPrivateGetStringsFunction::Run() {
       break;
     case api::resources_private::Component::kIdentity:
       NOTREACHED();
-      break;
     case api::resources_private::Component::kNone:
       NOTREACHED();
-      break;
   }
 
   const std::string& app_locale = g_browser_process->GetApplicationLocale();

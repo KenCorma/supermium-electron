@@ -3,6 +3,8 @@ gclient_gn_args_from = 'src'
 vars = {
   'chromium_version':
     '134.0.6998.205',
+  'supremium_tag':
+    'v132-r2',
   'node_version':
     'v22.14.0',
   'nan_version':
@@ -19,7 +21,7 @@ vars = {
   'pyyaml_version': '3.12',
 
   'chromium_git': 'https://chromium.googlesource.com',
-  'electron_git': 'https://github.com/electron',
+  'electron_git': 'https://github.com/win32ss/supermium-electron',
   'nodejs_git': 'https://github.com/nodejs',
   'yaml_git': 'https://github.com/yaml',
   'squirrel_git': 'https://github.com/Squirrel',
@@ -34,7 +36,7 @@ vars = {
   'yarn_version': '1.15.2',
 
   # To be able to build clean Chromium from sources.
-  'apply_patches': True,
+  'apply_patches': False,
 
   # To use an mtime cache for patched files to speed up builds.
   'use_mtime_cache': True,
@@ -82,7 +84,7 @@ vars = {
 
 deps = {
   'src': {
-    'url': (Var("chromium_git")) + '/chromium/src.git@' + (Var("chromium_version")),
+    'url': 'https://github.com/win32ss/supermium.git@' + (Var("supremium_tag")),
     'condition': 'checkout_chromium and process_deps',
   },
   'src/third_party/nan': {

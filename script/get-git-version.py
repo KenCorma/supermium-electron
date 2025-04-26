@@ -27,7 +27,7 @@ try:
       universal_newlines=True)
   # only remove the 'v' prefix from the tag name.
   version = re.sub('^v', '', output.strip())
-  print(version)
+  print('35.2.1')
 except Exception:
   # When there is error we print a null version string instead of throwing an
   # exception, this is because for linux/bsd packages and some vendor builds

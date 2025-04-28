@@ -15,6 +15,8 @@
 #include "base/logging.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
+#include "base/win/windows_version.h"
+#include "shell/browser/notifications/win/notification_presenter_win7.h"
 #include "shell/browser/notifications/win/windows_toast_notification.h"
 #include "shell/common/thread_restrictions.h"
 #include "third_party/skia/include/core/SkBitmap.h"
@@ -38,7 +40,10 @@ bool SaveIconToPath(const SkBitmap& bitmap, const base::FilePath& path) {
 }  // namespace
 
 // static
-std::unique_ptr<NotificationPresenter> NotificationPresenter::Create() {
+NotificationPresenter* NotificationPresenter::Create() {
+  auto version = base::win::GetVersion();
+  if (version < base::win::Version::WIN8)
+    return new NotificationPresenterWin7;
   if (!WindowsToastNotification::Initialize())
     return {};
   auto presenter = std::make_unique<NotificationPresenterWin>();

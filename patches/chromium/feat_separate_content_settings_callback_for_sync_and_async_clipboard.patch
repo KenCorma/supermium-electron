@@ -20,10 +20,10 @@ This patch will be removed when the deprecated sync api support is
 removed.
 
 diff --git a/components/permissions/permission_util.cc b/components/permissions/permission_util.cc
-index ce926b9da23df5dc9b36a447755c9251dac0c95b..97976ff9ce81bf4939a0f638f19be5691ceeab9d 100644
+index d21e492cac6b6750dfab320e35c94841df54e2e4..3c05ae9bf223e9b3b6ca6d4c05be31c517e2a996 100644
 --- a/components/permissions/permission_util.cc
 +++ b/components/permissions/permission_util.cc
-@@ -384,6 +384,7 @@ ContentSettingsType PermissionUtil::PermissionTypeToContentSettingsTypeSafe(
+@@ -364,6 +364,7 @@ ContentSettingsType PermissionUtil::PermissionTypeToContentSettingsTypeSafe(
        return ContentSettingsType::AUTOMATIC_FULLSCREEN;
      case PermissionType::WEB_APP_INSTALLATION:
        return ContentSettingsType::WEB_APP_INSTALLATION;
@@ -32,10 +32,10 @@ index ce926b9da23df5dc9b36a447755c9251dac0c95b..97976ff9ce81bf4939a0f638f19be569
        break;
    }
 diff --git a/content/browser/permissions/permission_controller_impl.cc b/content/browser/permissions/permission_controller_impl.cc
-index e991887c103618b35688cf72307ca05fdb202e6e..54894f3412d42264eae80d767be5215e52f08184 100644
+index 4e6b9b4073892051a72e40808365fe59c1e77903..e4403c1e95510b7846cc57f3c5a95a41480149f5 100644
 --- a/content/browser/permissions/permission_controller_impl.cc
 +++ b/content/browser/permissions/permission_controller_impl.cc
-@@ -86,6 +86,7 @@ PermissionToSchedulingFeature(PermissionType permission_name) {
+@@ -94,6 +94,7 @@ PermissionToSchedulingFeature(PermissionType permission_name) {
      case PermissionType::POINTER_LOCK:
      case PermissionType::AUTOMATIC_FULLSCREEN:
      case PermissionType::WEB_APP_INSTALLATION:
@@ -44,7 +44,7 @@ index e991887c103618b35688cf72307ca05fdb202e6e..54894f3412d42264eae80d767be5215e
    }
  }
 diff --git a/third_party/blink/common/permissions/permission_utils.cc b/third_party/blink/common/permissions/permission_utils.cc
-index 779b458094edfa866ac70d7e0ac6413cc700c6a5..b42cbc34f1d2e214d8cc6ed2aacfa9ae21c2569a 100644
+index baa74bd6c7bf6350f4ef06f00d94d1d517b43943..2d4f846f08383e22e42c55f783eb1041de4cd258 100644
 --- a/third_party/blink/common/permissions/permission_utils.cc
 +++ b/third_party/blink/common/permissions/permission_utils.cc
 @@ -99,6 +99,8 @@ std::string GetPermissionString(PermissionType permission) {
@@ -65,7 +65,7 @@ index 779b458094edfa866ac70d7e0ac6413cc700c6a5..b42cbc34f1d2e214d8cc6ed2aacfa9ae
  
      case PermissionType::NUM:
 diff --git a/third_party/blink/public/common/permissions/permission_utils.h b/third_party/blink/public/common/permissions/permission_utils.h
-index f9b1db54dd367d1f0e42cdfcfd04255d452f0e1b..54b4b742298af03d8924f6ad613081f1b5dfae4d 100644
+index ae03b7f099d30c157cfda7d1beb7c535d3615471..ca287e7a5271ee83c393de6c1fe347973f4292ba 100644
 --- a/third_party/blink/public/common/permissions/permission_utils.h
 +++ b/third_party/blink/public/common/permissions/permission_utils.h
 @@ -64,6 +64,7 @@ enum class PermissionType {
@@ -91,10 +91,10 @@ index 28f616f21f998c7cd1c794e58efaccf9e6c11e6e..c64896642209124e500db2ed6fe2357e
    // The common use case of this method is actually to selectively disable
    // MutationEvents, but it's been named for consistency with the rest of the
 diff --git a/third_party/blink/renderer/core/editing/commands/clipboard_commands.cc b/third_party/blink/renderer/core/editing/commands/clipboard_commands.cc
-index c269698764bb8ae7f85c5d476436f5ae5209576d..65d7fd94128a755609192784722074c6c2b7b7cf 100644
+index 20ebd3f2f5fa7b16ad1b2081ca41b007bc78a354..b248e3135182d36a6524c2e626157a0e4c759d14 100644
 --- a/third_party/blink/renderer/core/editing/commands/clipboard_commands.cc
 +++ b/third_party/blink/renderer/core/editing/commands/clipboard_commands.cc
-@@ -122,7 +122,7 @@ bool ClipboardCommands::CanReadClipboard(LocalFrame& frame,
+@@ -121,7 +121,7 @@ bool ClipboardCommands::CanReadClipboard(LocalFrame& frame,
      return true;
    }
    return frame.GetContentSettingsClient() &&
@@ -103,7 +103,7 @@ index c269698764bb8ae7f85c5d476436f5ae5209576d..65d7fd94128a755609192784722074c6
  }
  
  bool ClipboardCommands::CanWriteClipboard(LocalFrame& frame,
-@@ -311,7 +311,7 @@ bool ClipboardCommands::PasteSupported(LocalFrame* frame) {
+@@ -300,7 +300,7 @@ bool ClipboardCommands::PasteSupported(LocalFrame* frame) {
      return true;
    }
    return frame->GetContentSettingsClient() &&

@@ -25,10 +25,10 @@ Commit-Queue: Patrick Meenan <pmeenan@chromium.org>
 Cr-Commit-Position: refs/heads/main@{#1416795}
 
 diff --git a/content/browser/renderer_host/policy_container_host.cc b/content/browser/renderer_host/policy_container_host.cc
-index 5f62b1a274bab7028beb9836f88805e7b5a83e2c..f16f56d8d5f0c4e9bc164c546eee8c28f6856693 100644
+index b17c33c425da7bc98a6669c6595a7e6185a96644..9630f39ee4570d084c877f69658534affef226d2 100644
 --- a/content/browser/renderer_host/policy_container_host.cc
 +++ b/content/browser/renderer_host/policy_container_host.cc
-@@ -136,9 +136,11 @@ PolicyContainerPolicies::PolicyContainerPolicies(
+@@ -135,9 +135,11 @@ PolicyContainerPolicies::PolicyContainerPolicies(
        allow_cross_origin_isolation(allow_cross_origin_isolation) {}
  
  PolicyContainerPolicies::PolicyContainerPolicies(
@@ -56,10 +56,10 @@ index 394bd53bb5c1dfea5abe24b9047eb190884c2648..7add42348ef28079196b447feda78210
    // Used when loading workers from network schemes.
    // WARNING: This does not populate referrer policy.
 diff --git a/content/browser/service_worker/service_worker_registry.cc b/content/browser/service_worker/service_worker_registry.cc
-index aa1e8fb5d1b3eef93b799f29cc89e15315507d2d..68b5c2ba114aa084c5ad6bc2e4fd12d44393ed77 100644
+index 8ce6875c21522032e8eb448338558c2a28f78613..efa037a599a38af655fd593767f35a601badd3a1 100644
 --- a/content/browser/service_worker/service_worker_registry.cc
 +++ b/content/browser/service_worker/service_worker_registry.cc
-@@ -1084,7 +1084,8 @@ ServiceWorkerRegistry::GetOrCreateRegistration(
+@@ -1076,7 +1076,8 @@ ServiceWorkerRegistry::GetOrCreateRegistration(
      if (data.policy_container_policies) {
        version->set_policy_container_host(
            base::MakeRefCounted<PolicyContainerHost>(
@@ -67,5 +67,5 @@ index aa1e8fb5d1b3eef93b799f29cc89e15315507d2d..68b5c2ba114aa084c5ad6bc2e4fd12d4
 +              PolicyContainerPolicies(*data.policy_container_policies,
 +                                      /*is_web_secure_context=*/true)));
      }
-     if (data.router_rules) {
+     if (data.router_rules && version->IsStaticRouterEnabled()) {
        auto error = version->SetupRouterEvaluator(*data.router_rules);

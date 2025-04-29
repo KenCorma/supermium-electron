@@ -1,0 +1,214 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Kendal Cormany <kendal.cormany@nexus.io>
+Date: Tue, 11 Mar 2025 18:13:17 -0700
+Subject: re-added HasAeroGlass
+
+
+diff --git a/cc/trees/layer_tree_host_impl.cc b/cc/trees/layer_tree_host_impl.cc
+index 43c1b642e1bb8c3dc2d9e7f4ca8b7ad0edf0ef8b..80acdaf8df2f6fe7a152096e1dc2f5180f0ea19f 100644
+--- a/cc/trees/layer_tree_host_impl.cc
++++ b/cc/trees/layer_tree_host_impl.cc
+@@ -1960,6 +1960,10 @@ void LayerTreeHostImpl::SetIsLikelyToRequireADraw(
+ TargetColorParams LayerTreeHostImpl::GetTargetColorParams(
+     gfx::ContentColorUsage content_color_usage) const {
+   TargetColorParams params;
++  if (!settings_.enable_color_correct_rendering) {
++    params.color_space = gfx::ColorSpace();
++    return params;
++  }
+ 
+   // If we are likely to software composite the resource, we use sRGB because
+   // software compositing is unable to perform color conversion.
+diff --git a/cc/trees/layer_tree_settings.h b/cc/trees/layer_tree_settings.h
+index a7b1406a289a6137a2471792ae840b117b91157c..4a9acb885c54e24bb24db513288a0d1be4b8f092 100644
+--- a/cc/trees/layer_tree_settings.h
++++ b/cc/trees/layer_tree_settings.h
+@@ -112,6 +112,8 @@ class CC_EXPORT LayerTreeSettings {
+   bool use_rgba_4444 = false;
+   bool unpremultiply_and_dither_low_bit_depth_tiles = false;
+ 
++  bool enable_color_correct_rendering = true;
++
+   // If set to true, the compositor may selectively defer image decodes to the
+   // Image Decode Service and raster tiles without images until the decode is
+   // ready.
+diff --git a/components/viz/common/display/renderer_settings.h b/components/viz/common/display/renderer_settings.h
+index 1905ee48787b9036ee5a49df8e83798fb955f1a0..479bc6d284557ee8e3d8a6550f0a7b8c43b1dc33 100644
+--- a/components/viz/common/display/renderer_settings.h
++++ b/components/viz/common/display/renderer_settings.h
+@@ -24,6 +24,7 @@ class VIZ_COMMON_EXPORT RendererSettings {
+   RendererSettings(const RendererSettings& other);
+   ~RendererSettings();
+ 
++  bool enable_color_correct_rendering = true;
+   bool allow_antialiasing = true;
+   bool force_antialiasing = false;
+   bool force_blending_with_shaders = false;
+diff --git a/components/viz/host/renderer_settings_creation.cc b/components/viz/host/renderer_settings_creation.cc
+index 322a2d21a234a7c55614568efcaea1c49142d482..6f0eaa1ebf5e0c328245b216cf44272a47630f47 100644
+--- a/components/viz/host/renderer_settings_creation.cc
++++ b/components/viz/host/renderer_settings_creation.cc
+@@ -18,6 +18,7 @@
+ #include "components/viz/common/features.h"
+ #include "components/viz/common/switches.h"
+ #include "ui/base/ui_base_switches.h"
++#include "ui/gfx/switches.h"
+ 
+ #if BUILDFLAG(IS_OZONE)
+ #include "ui/ozone/public/ozone_platform.h"
+@@ -50,6 +51,8 @@ bool GetSwitchValueAsInt(const base::CommandLine* command_line,
+ RendererSettings CreateRendererSettings() {
+   RendererSettings renderer_settings;
+   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
++  renderer_settings.enable_color_correct_rendering =
++      !command_line->HasSwitch(switches::kDisableColorCorrectRendering);
+   renderer_settings.partial_swap_enabled =
+       !command_line->HasSwitch(switches::kUIDisablePartialSwap);
+ 
+diff --git a/content/browser/gpu/gpu_process_host.cc b/content/browser/gpu/gpu_process_host.cc
+index 513b55e316b167fcf94e8094a0ae43d715b4ebf3..617296ef11dd504b053dfdd35e289c6ba7840b2a 100644
+--- a/content/browser/gpu/gpu_process_host.cc
++++ b/content/browser/gpu/gpu_process_host.cc
+@@ -238,6 +238,7 @@ GpuTerminationStatus ConvertToGpuTerminationStatus(
+ 
+ // Command-line switches to propagate to the GPU process.
+ static const char* const kSwitchNames[] = {
++    switches::kDisableColorCorrectRendering,
+     sandbox::policy::switches::kDisableSeccompFilterSandbox,
+     sandbox::policy::switches::kGpuSandboxAllowSysVShm,
+     sandbox::policy::switches::kGpuSandboxFailuresFatal,
+diff --git a/third_party/blink/renderer/platform/graphics/canvas_color_params.cc b/third_party/blink/renderer/platform/graphics/canvas_color_params.cc
+index b007f6c1dc5946416c4d96e0a08afab68ecf709a..f426f6afc41e455f8842d3c1fe74d2b1329d9205 100644
+--- a/third_party/blink/renderer/platform/graphics/canvas_color_params.cc
++++ b/third_party/blink/renderer/platform/graphics/canvas_color_params.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/platform/graphics/canvas_color_params.h"
+ 
++#include "base/command_line.h"
+ #include "cc/paint/skia_paint_canvas.h"
+ #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+ #include "third_party/khronos/GLES2/gl2.h"
+@@ -11,6 +12,7 @@
+ #include "third_party/khronos/GLES3/gl3.h"
+ #include "third_party/skia/include/core/SkSurfaceProps.h"
+ #include "ui/gfx/color_space.h"
++#include "ui/gfx/switches.h"
+ 
+ namespace blink {
+ 
+@@ -18,6 +20,10 @@ namespace blink {
+ // Level 4 specification.
+ gfx::ColorSpace PredefinedColorSpaceToGfxColorSpace(
+     PredefinedColorSpace color_space) {
++  auto* cmd_line = base::CommandLine::ForCurrentProcess();
++  if (cmd_line->HasSwitch(switches::kDisableColorCorrectRendering)) {
++    return gfx::ColorSpace();
++  }
+   switch (color_space) {
+     case PredefinedColorSpace::kSRGB:
+       return gfx::ColorSpace::CreateSRGB();
+@@ -116,6 +122,11 @@ uint8_t CanvasColorParams::BytesPerPixel() const {
+ }
+ 
+ gfx::ColorSpace CanvasColorParams::GetStorageGfxColorSpace() const {
++  auto* cmd_line = base::CommandLine::ForCurrentProcess();
++  if (cmd_line->HasSwitch(switches::kDisableColorCorrectRendering)) {
++    return gfx::ColorSpace();
++  }
++
+   return PredefinedColorSpaceToGfxColorSpace(color_space_);
+ }
+ 
+diff --git a/ui/base/ui_base_switches.cc b/ui/base/ui_base_switches.cc
+index 8c45e76112b8dd92ccc75ab0071701722d2b4024..d3b4a7474e887344a3d5f7069f336bef8f9b86c6 100644
+--- a/ui/base/ui_base_switches.cc
++++ b/ui/base/ui_base_switches.cc
+@@ -37,6 +37,8 @@ const char kUiToolkitFlag[] = "ui-toolkit";
+ const char kDisableGtkIme[] = "disable-gtk-ime";
+ #endif
+ 
++const char kDisableDwmComposition[] = "disable-dwm-composition";
++
+ // Disables touch event based drag and drop.
+ const char kDisableTouchDragDrop[] = "disable-touch-drag-drop";
+ 
+diff --git a/ui/base/ui_base_switches.h b/ui/base/ui_base_switches.h
+index 3f4773fef66f281f35db394917c69f7b1599d94f..2148636ec8f7299aff075f9328a50ea6f754e673 100644
+--- a/ui/base/ui_base_switches.h
++++ b/ui/base/ui_base_switches.h
+@@ -38,6 +38,7 @@ COMPONENT_EXPORT(UI_BASE) extern const char kForceCaptionStyle[];
+ COMPONENT_EXPORT(UI_BASE) extern const char kForceDarkMode[];
+ COMPONENT_EXPORT(UI_BASE) extern const char kForceHighContrast[];
+ COMPONENT_EXPORT(UI_BASE) extern const char kLang[];
++COMPONENT_EXPORT(UI_BASE) extern const char kDisableDwmComposition[];
+ COMPONENT_EXPORT(UI_BASE) extern const char kShowOverdrawFeedback[];
+ COMPONENT_EXPORT(UI_BASE) extern const char kSlowDownCompositingScaleFactor[];
+ COMPONENT_EXPORT(UI_BASE) extern const char kTintCompositedContent[];
+diff --git a/ui/base/win/shell.cc b/ui/base/win/shell.cc
+index f4aaa344ac77fcd61cda864a3820ed5f3536d5eb..7b153ce1e632db1d2537c231edc14f9a39f221e0 100644
+--- a/ui/base/win/shell.cc
++++ b/ui/base/win/shell.cc
+@@ -11,6 +11,7 @@
+ #include <shellapi.h>
+ #include <wrl/client.h>
+ 
++#include "base/command_line.h"
+ #include "base/debug/alias.h"
+ #include "base/files/file.h"
+ #include "base/files/file_path.h"
+@@ -177,4 +178,14 @@ void ClearWindowPropertyStore(HWND hwnd) {
+   DCHECK(FAILED(pps->GetCount(&property_count)) || property_count == 0);
+ }
+ 
++bool IsAeroGlassEnabled() {
++  // For testing in Win8 (where it is not possible to disable composition) the
++  // user can specify this command line switch to mimic the behavior.  In this
++  // mode, cross-HWND transparency is not supported and various types of
++  // widgets fallback to more simplified rendering behavior.
++  return !base::CommandLine::ForCurrentProcess()->HasSwitch(
++          switches::kDisableDwmComposition);
++}
++
++
+ }  // namespace ui::win
+diff --git a/ui/base/win/shell.h b/ui/base/win/shell.h
+index 043abb1452e00fcb3c9c033c77b787fe7db01e28..07366243d8f58abb7196bf4e21e5cf72b78d3983 100644
+--- a/ui/base/win/shell.h
++++ b/ui/base/win/shell.h
+@@ -75,6 +75,10 @@ void SetRelaunchDetailsForWindow(const std::wstring& relaunch_command,
+ // Clears the Window Property Store on an HWND.
+ COMPONENT_EXPORT(UI_BASE) void ClearWindowPropertyStore(HWND hwnd);
+ 
++// Returns true if composition is available and turned on on the current
++// platform.
++COMPONENT_EXPORT(UI_BASE) bool IsAeroGlassEnabled();
++
+ }  // namespace ui::win
+ 
+ #endif  // UI_BASE_WIN_SHELL_H_
+diff --git a/ui/gfx/switches.cc b/ui/gfx/switches.cc
+index dc874cd8da3d558adab93358daa66e5d78f2f944..d682dc3b4655c20a4071f837e032b066f25f286d 100644
+--- a/ui/gfx/switches.cc
++++ b/ui/gfx/switches.cc
+@@ -18,6 +18,8 @@ const char kDisableDirectWrite[] = "disable-direct-write";
+ // only apply to LinearAnimation and its subclasses.
+ const char kAnimationDurationScale[] = "animation-duration-scale";
+ 
++const char kDisableColorCorrectRendering[] = "disable-color-correct-rendering";
++
+ // Force disables font subpixel positioning. This affects the character glyph
+ // sharpness, kerning, hinting and layout.
+ const char kDisableFontSubpixelPositioning[] =
+diff --git a/ui/gfx/switches.h b/ui/gfx/switches.h
+index 36c39a070f2c99631dba79d9cad59162f4c4e7bb..83b51c4b2a08decd40792162750654ba226d6390 100644
+--- a/ui/gfx/switches.h
++++ b/ui/gfx/switches.h
+@@ -12,6 +12,7 @@
+ namespace switches {
+ 
+ GFX_SWITCHES_EXPORT extern const char kAnimationDurationScale[];
++GFX_SWITCHES_EXPORT extern const char kDisableColorCorrectRendering[];
+ GFX_SWITCHES_EXPORT extern const char kDisableFontSubpixelPositioning[];
+ GFX_SWITCHES_EXPORT extern const char kEnableNativeGpuMemoryBuffers[];
+ GFX_SWITCHES_EXPORT extern const char kForcePrefersReducedMotion[];

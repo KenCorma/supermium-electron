@@ -34,10 +34,10 @@ index 39b5a8fdd165efd74b00256552b51b5413107958..bfc4ef4f50efff4a77f2aef64335bb7e
  
  class ScrollEvent;
 diff --git a/ui/views/widget/desktop_aura/desktop_window_tree_host_win.cc b/ui/views/widget/desktop_aura/desktop_window_tree_host_win.cc
-index 2d05856687cd9669f72553d33c8033fd9083b4f8..645b7dd2cc20ce64ffa541c74930f541f083f931 100644
+index 3c5399d8c595f1bee81f7b2d2055c3ad8a865a40..5d2f96d6b5c595c87dc7b8e5a6c524b695e0d7ab 100644
 --- a/ui/views/widget/desktop_aura/desktop_window_tree_host_win.cc
 +++ b/ui/views/widget/desktop_aura/desktop_window_tree_host_win.cc
-@@ -1357,6 +1357,10 @@ void DesktopWindowTreeHostWin::HandleHeadlessWindowBoundsChanged(
+@@ -1298,6 +1298,10 @@ void DesktopWindowTreeHostWin::HandleHeadlessWindowBoundsChanged(
    window()->SetProperty(aura::client::kHeadlessBoundsKey, bounds);
  }
  
@@ -49,23 +49,23 @@ index 2d05856687cd9669f72553d33c8033fd9083b4f8..645b7dd2cc20ce64ffa541c74930f541
  DesktopWindowTreeHostWin::GetSingletonDesktopNativeCursorManager() {
    return new DesktopNativeCursorManagerWin();
 diff --git a/ui/views/widget/desktop_aura/desktop_window_tree_host_win.h b/ui/views/widget/desktop_aura/desktop_window_tree_host_win.h
-index 932351e288f37fd09ae1a43f44e8b51fb0caa4b8..4a0616bc210d234e51e564daabdd2ebd5ac9fc16 100644
+index f6ad5e1de5c863b7fe0d732ea4611052eccf5f89..9f8ddbc7a3c7eada45b745b4fb878a62f22745ad 100644
 --- a/ui/views/widget/desktop_aura/desktop_window_tree_host_win.h
 +++ b/ui/views/widget/desktop_aura/desktop_window_tree_host_win.h
-@@ -267,6 +267,7 @@ class VIEWS_EXPORT DesktopWindowTreeHostWin : public DesktopWindowTreeHost,
+@@ -274,6 +274,7 @@ class VIEWS_EXPORT DesktopWindowTreeHostWin
    void HandleWindowSizeUnchanged() override;
    void HandleWindowScaleFactorChanged(float window_scale_factor) override;
    void HandleHeadlessWindowBoundsChanged(const gfx::Rect& bounds) override;
 +  bool HandleMouseEventForCaption(UINT message) const override;
  
-   // Overridden from WidgetObserver.
-   void OnWidgetThemeChanged(Widget* widget) override;
+   Widget* GetWidget();
+   const Widget* GetWidget() const;
 diff --git a/ui/views/win/hwnd_message_handler.cc b/ui/views/win/hwnd_message_handler.cc
-index c4d1d483454591031bd76dffced0c1d821800e13..e3bb491f218b2e5d96c424e40a071a618b345039 100644
+index 7a040b61c782556c80c78045d3676db11bb3ca7f..774bcb7f3928a263a8e79a467deb4328ec053e58 100644
 --- a/ui/views/win/hwnd_message_handler.cc
 +++ b/ui/views/win/hwnd_message_handler.cc
-@@ -3165,15 +3165,19 @@ LRESULT HWNDMessageHandler::HandleMouseEventInternal(UINT message,
-     }
+@@ -3092,15 +3092,19 @@ LRESULT HWNDMessageHandler::HandleMouseEventInternal(UINT message,
+       SetMsgHandled(FALSE);
      // We must let Windows handle the caption buttons if it's drawing them, or
      // they won't work.
 +    bool simulate_mouse_event_for_caption = false;
@@ -73,20 +73,20 @@ index c4d1d483454591031bd76dffced0c1d821800e13..e3bb491f218b2e5d96c424e40a071a61
          (hittest == HTCLOSE || hittest == HTMINBUTTON ||
           hittest == HTMAXBUTTON)) {
 -      SetMsgHandled(FALSE);
-+      simulate_mouse_event_for_caption =
-+          delegate_->HandleMouseEventForCaption(message);
-+      if (!simulate_mouse_event_for_caption)
-+        SetMsgHandled(FALSE);
++          simulate_mouse_event_for_caption =
++            delegate_->HandleMouseEventForCaption(message);
++            if (!simulate_mouse_event_for_caption)
++              SetMsgHandled(FALSE);
      }
      // Let resize events fall through. Ignore everything else, as we're either
      // letting Windows handle it above or we've already handled the equivalent
      // touch message.
--    if (!IsHitTestOnResizeHandle(hittest)) {
+-    if (!IsHitTestOnResizeHandle(hittest))
 +    if (!IsHitTestOnResizeHandle(hittest) && !simulate_mouse_event_for_caption) {
        return 0;
-     }
    }
-@@ -3203,7 +3207,17 @@ LRESULT HWNDMessageHandler::HandleMouseEventInternal(UINT message,
+ 
+@@ -3128,7 +3132,17 @@ LRESULT HWNDMessageHandler::HandleMouseEventInternal(UINT message,
      w_param = static_cast<WPARAM>(SendMessage(
          hwnd(), WM_NCHITTEST, 0, MAKELPARAM(screen_point.x, screen_point.y)));
      if (w_param == HTCAPTION || w_param == HTSYSMENU) {
@@ -106,10 +106,10 @@ index c4d1d483454591031bd76dffced0c1d821800e13..e3bb491f218b2e5d96c424e40a071a61
      }
    } else if (message == WM_NCLBUTTONDOWN &&
 diff --git a/ui/views/win/hwnd_message_handler_delegate.h b/ui/views/win/hwnd_message_handler_delegate.h
-index 04dea68d74ea4f559db60f716c919e555db9ec80..2f8bd1a3c156bb6c04663c74b7279bb59926fc3d 100644
+index 588e2048ebfa8a45cf0c3b1dc119322ac0641fd9..6b85df1e8cdfb16ab7d436098fd35df8f2468139 100644
 --- a/ui/views/win/hwnd_message_handler_delegate.h
 +++ b/ui/views/win/hwnd_message_handler_delegate.h
-@@ -258,6 +258,10 @@ class VIEWS_EXPORT HWNDMessageHandlerDelegate {
+@@ -257,6 +257,10 @@ class VIEWS_EXPORT HWNDMessageHandlerDelegate {
    // Called when the window scale factor has changed.
    virtual void HandleWindowScaleFactorChanged(float window_scale_factor) = 0;
  
@@ -117,6 +117,6 @@ index 04dea68d74ea4f559db60f716c919e555db9ec80..2f8bd1a3c156bb6c04663c74b7279bb5
 +  // caption buttons.
 +  virtual bool HandleMouseEventForCaption(UINT message) const = 0;
 +
-  protected:
-   virtual ~HWNDMessageHandlerDelegate() = default;
- };
+   // Called when the headless window bounds has changed.
+   virtual void HandleHeadlessWindowBoundsChanged(const gfx::Rect& bounds) = 0;
+ 

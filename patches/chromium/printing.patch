@@ -68,7 +68,7 @@ index 6f35d5ab358627ff8b1cbf09f5643f0f484e027a..5e736b846880a7d4a1e1611a0f70feca
                 : PdfRenderSettings::Mode::POSTSCRIPT_LEVEL3;
    }
 diff --git a/chrome/browser/printing/print_view_manager_base.cc b/chrome/browser/printing/print_view_manager_base.cc
-index ff2fbe115134adedf7179502053a699a7594ea05..f934f190ac4fe56a20e2147e53a8edcc44191198 100644
+index 05d05dd3d2902947e2ddf9a3f9379abe0008d74e..8a65ef057271bbef16f1d596229a5976997aaa4b 100644
 --- a/chrome/browser/printing/print_view_manager_base.cc
 +++ b/chrome/browser/printing/print_view_manager_base.cc
 @@ -83,6 +83,20 @@ namespace printing {
@@ -477,7 +477,7 @@ index ff2fbe115134adedf7179502053a699a7594ea05..f934f190ac4fe56a20e2147e53a8edcc
 @@ -1310,6 +1371,8 @@ void PrintViewManagerBase::CompleteScriptedPrint(
    auto callback_wrapper = base::BindOnce(
        &PrintViewManagerBase::ScriptedPrintReply, weak_ptr_factory_.GetWeakPtr(),
-       std::move(callback), render_process_host->GetDeprecatedID());
+       std::move(callback), render_process_host->GetID());
 +  auto cancel_job_wrapper = base::BindOnce(
 +      &PrintViewManagerBase::UserInitCanceled, weak_ptr_factory_.GetWeakPtr());
  #if BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
@@ -643,7 +643,7 @@ index ca71560874a0189068dd11fbc039f5673bf6bd96..a8551d95e64da2afbc1685b2df8f1fc3
                        mojom::PrintFailureReason reason) override;
  
 diff --git a/components/printing/common/print.mojom b/components/printing/common/print.mojom
-index 6809c4576c71bc1e1a6ad4e0a37707272a9a10f4..3aad10424a6a31dab2ca393d00149ec6ec1ca646 100644
+index 3c2fdc9f9a6c60efc4b0afacbfb83eef55917791..8fd9aff538fa03da6c171927c316d4f611c46da1 100644
 --- a/components/printing/common/print.mojom
 +++ b/components/printing/common/print.mojom
 @@ -303,7 +303,7 @@ union PrintWithParamsResult {
@@ -666,7 +666,7 @@ index 6809c4576c71bc1e1a6ad4e0a37707272a9a10f4..3aad10424a6a31dab2ca393d00149ec6
    PrintingFailed(int32 cookie, PrintFailureReason reason);
  
 diff --git a/components/printing/renderer/print_render_frame_helper.cc b/components/printing/renderer/print_render_frame_helper.cc
-index 08af2c8458fdc2539b437c3ff7e3fa2b5d36eeda..5a8d2f3cc57a66535afb027ee43eebc3b3ffe41c 100644
+index 423cea4420bc868baad6260fb7c6b33430eaaf95..d5b60def1cc9794970a88d0eaed8be08e8a3d398 100644
 --- a/components/printing/renderer/print_render_frame_helper.cc
 +++ b/components/printing/renderer/print_render_frame_helper.cc
 @@ -52,6 +52,7 @@
@@ -677,7 +677,7 @@ index 08af2c8458fdc2539b437c3ff7e3fa2b5d36eeda..5a8d2f3cc57a66535afb027ee43eebc3
  #include "printing/units.h"
  #include "services/metrics/public/cpp/ukm_source_id.h"
  #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
-@@ -1222,14 +1223,14 @@ void PrintRenderFrameHelper::ScriptedPrint(bool user_initiated) {
+@@ -1227,14 +1228,14 @@ void PrintRenderFrameHelper::ScriptedPrint(bool user_initiated) {
    }
  
    print_in_progress_ = true;
@@ -694,7 +694,7 @@ index 08af2c8458fdc2539b437c3ff7e3fa2b5d36eeda..5a8d2f3cc57a66535afb027ee43eebc3
    if (!weak_this) {
      return;
    }
-@@ -1260,12 +1261,14 @@ void PrintRenderFrameHelper::BindPrintRenderFrameReceiver(
+@@ -1265,12 +1266,14 @@ void PrintRenderFrameHelper::BindPrintRenderFrameReceiver(
    receivers_.Add(this, std::move(receiver));
  }
  
@@ -712,7 +712,7 @@ index 08af2c8458fdc2539b437c3ff7e3fa2b5d36eeda..5a8d2f3cc57a66535afb027ee43eebc3
    ScopedIPC scoped_ipc(weak_ptr_factory_.GetWeakPtr());
    if (ipc_nesting_level_ > kAllowedIpcDepthForPrint) {
      return;
-@@ -1282,9 +1285,10 @@ void PrintRenderFrameHelper::PrintRequestedPagesInternal(
+@@ -1287,9 +1290,10 @@ void PrintRenderFrameHelper::PrintRequestedPagesInternal(
  
      is_loading_ = frame->WillPrintSoon();
      if (is_loading_) {
@@ -726,7 +726,7 @@ index 08af2c8458fdc2539b437c3ff7e3fa2b5d36eeda..5a8d2f3cc57a66535afb027ee43eebc3
        SetupOnStopLoadingTimeout();
        return;
      }
-@@ -1294,7 +1298,7 @@ void PrintRenderFrameHelper::PrintRequestedPagesInternal(
+@@ -1299,7 +1303,7 @@ void PrintRenderFrameHelper::PrintRequestedPagesInternal(
    // plugin node and print that instead.
    auto plugin = delegate_->GetPdfElement(frame);
  
@@ -735,7 +735,7 @@ index 08af2c8458fdc2539b437c3ff7e3fa2b5d36eeda..5a8d2f3cc57a66535afb027ee43eebc3
  
    if (render_frame_gone_) {
      return;
-@@ -1450,6 +1454,8 @@ void PrintRenderFrameHelper::PrintPreview(base::Value::Dict settings) {
+@@ -1456,6 +1460,8 @@ void PrintRenderFrameHelper::PrintPreview(base::Value::Dict settings) {
    if (ipc_nesting_level_ > kAllowedIpcDepthForPrint)
      return;
  
@@ -743,8 +743,8 @@ index 08af2c8458fdc2539b437c3ff7e3fa2b5d36eeda..5a8d2f3cc57a66535afb027ee43eebc3
 +  print_preview_context_.InitWithFrame(frame);
    print_preview_context_.OnPrintPreview();
  
- #if BUILDFLAG(IS_CHROMEOS)
-@@ -2062,17 +2068,19 @@ void PrintRenderFrameHelper::PrintNode(const blink::WebNode& node) {
+ #if BUILDFLAG(IS_CHROMEOS_ASH)
+@@ -2063,17 +2069,19 @@ void PrintRenderFrameHelper::PrintNode(const blink::WebNode& node) {
  
  void PrintRenderFrameHelper::Print(blink::WebLocalFrame* frame,
                                     const blink::WebNode& node,
@@ -767,7 +767,7 @@ index 08af2c8458fdc2539b437c3ff7e3fa2b5d36eeda..5a8d2f3cc57a66535afb027ee43eebc3
      DidFinishPrinting(PrintingResult::kFailPrintInit);
      return;
    }
-@@ -2093,8 +2101,15 @@ void PrintRenderFrameHelper::Print(blink::WebLocalFrame* frame,
+@@ -2094,8 +2102,15 @@ void PrintRenderFrameHelper::Print(blink::WebLocalFrame* frame,
          print_pages_params_->params->print_scaling_option;
  
      auto self = weak_ptr_factory_.GetWeakPtr();
@@ -784,7 +784,7 @@ index 08af2c8458fdc2539b437c3ff7e3fa2b5d36eeda..5a8d2f3cc57a66535afb027ee43eebc3
      // Check if `this` is still valid.
      if (!self)
        return;
-@@ -2362,29 +2377,43 @@ void PrintRenderFrameHelper::IPCProcessed() {
+@@ -2360,29 +2375,43 @@ void PrintRenderFrameHelper::IPCProcessed() {
  }
  
  bool PrintRenderFrameHelper::InitPrintSettings(blink::WebLocalFrame* frame,
@@ -838,10 +838,10 @@ index 08af2c8458fdc2539b437c3ff7e3fa2b5d36eeda..5a8d2f3cc57a66535afb027ee43eebc3
  }
  
 diff --git a/components/printing/renderer/print_render_frame_helper.h b/components/printing/renderer/print_render_frame_helper.h
-index 97cb6458bc9eec767db89b56abfc5f4b4136ff7b..d9a0b343158b8464b5c9aa8e0e655c0b6fb28b00 100644
+index b8c803184f267d87696c4e72c3d993ff3b69d95b..7278dfae56305cc8669fc2240563450f96bb6f52 100644
 --- a/components/printing/renderer/print_render_frame_helper.h
 +++ b/components/printing/renderer/print_render_frame_helper.h
-@@ -258,7 +258,7 @@ class PrintRenderFrameHelper
+@@ -259,7 +259,7 @@ class PrintRenderFrameHelper
        mojo::PendingAssociatedReceiver<mojom::PrintRenderFrame> receiver);
  
    // printing::mojom::PrintRenderFrame:
@@ -850,7 +850,7 @@ index 97cb6458bc9eec767db89b56abfc5f4b4136ff7b..d9a0b343158b8464b5c9aa8e0e655c0b
    void PrintWithParams(mojom::PrintPagesParamsPtr params,
                         PrintWithParamsCallback callback) override;
  #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
-@@ -325,7 +325,8 @@ class PrintRenderFrameHelper
+@@ -326,7 +326,8 @@ class PrintRenderFrameHelper
    // WARNING: |this| may be gone after this method returns.
    void Print(blink::WebLocalFrame* frame,
               const blink::WebNode& node,
@@ -860,7 +860,7 @@ index 97cb6458bc9eec767db89b56abfc5f4b4136ff7b..d9a0b343158b8464b5c9aa8e0e655c0b
  
    // Notification when printing is done - signal tear-down/free resources.
    void DidFinishPrinting(PrintingResult result);
-@@ -335,7 +336,8 @@ class PrintRenderFrameHelper
+@@ -336,7 +337,8 @@ class PrintRenderFrameHelper
    // Initialize print page settings with default settings.
    // Used only for native printing workflow.
    bool InitPrintSettings(blink::WebLocalFrame* frame,
@@ -870,7 +870,7 @@ index 97cb6458bc9eec767db89b56abfc5f4b4136ff7b..d9a0b343158b8464b5c9aa8e0e655c0b
  
    // Calculate number of pages in source document.
    uint32_t CalculateNumberOfPages(blink::WebLocalFrame* frame,
-@@ -637,7 +639,8 @@ class PrintRenderFrameHelper
+@@ -634,7 +636,8 @@ class PrintRenderFrameHelper
    };
  
    void SetupOnStopLoadingTimeout();
@@ -881,10 +881,10 @@ index 97cb6458bc9eec767db89b56abfc5f4b4136ff7b..d9a0b343158b8464b5c9aa8e0e655c0b
    ScriptingThrottler scripting_throttler_;
  
 diff --git a/content/browser/BUILD.gn b/content/browser/BUILD.gn
-index de8bfdd420e78b6dcf0415b360df207e4615d444..2d374ea7c1bbe77a931b16239e39d453b2d18575 100644
+index 11ca8416295db678ba74d3dffe565c9ca064bf3d..156151d2a7f10f775abc61bc333ac2e433867919 100644
 --- a/content/browser/BUILD.gn
 +++ b/content/browser/BUILD.gn
-@@ -3085,8 +3085,9 @@ source_set("browser") {
+@@ -3025,8 +3025,9 @@ source_set("browser") {
        "//ppapi/shared_impl",
      ]
  

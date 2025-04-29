@@ -17,10 +17,10 @@ headers, moving forward we should find a way in upstream to provide
 access to these headers for loader clients created on the browser process.
 
 diff --git a/services/network/public/cpp/resource_request.cc b/services/network/public/cpp/resource_request.cc
-index babcf42e01be00da8b853a1207e869614765b2bb..1c051a64d77e3ea8909dced73d93764d06ed7152 100644
+index 57713d234ec93e81ad5ee177f0e2978d7fe82e1d..535cb485455d6a2e23fea4042be4ad9174268bd1 100644
 --- a/services/network/public/cpp/resource_request.cc
 +++ b/services/network/public/cpp/resource_request.cc
-@@ -177,6 +177,7 @@ ResourceRequest::TrustedParams& ResourceRequest::TrustedParams::operator=(
+@@ -155,6 +155,7 @@ ResourceRequest::TrustedParams& ResourceRequest::TrustedParams::operator=(
    allow_cookies_from_browser = other.allow_cookies_from_browser;
    include_request_cookies_with_response =
        other.include_request_cookies_with_response;
@@ -28,7 +28,7 @@ index babcf42e01be00da8b853a1207e869614765b2bb..1c051a64d77e3ea8909dced73d93764d
    cookie_observer =
        Clone(&const_cast<mojo::PendingRemote<mojom::CookieAccessObserver>&>(
            other.cookie_observer));
-@@ -211,6 +212,7 @@ bool ResourceRequest::TrustedParams::EqualsForTesting(
+@@ -185,6 +186,7 @@ bool ResourceRequest::TrustedParams::EqualsForTesting(
      const TrustedParams& other) const {
    return isolation_info.IsEqualForTesting(other.isolation_info) &&
           disable_secure_dns == other.disable_secure_dns &&
@@ -37,10 +37,10 @@ index babcf42e01be00da8b853a1207e869614765b2bb..1c051a64d77e3ea8909dced73d93764d
           allow_cookies_from_browser == other.allow_cookies_from_browser &&
           include_request_cookies_with_response ==
 diff --git a/services/network/public/cpp/resource_request.h b/services/network/public/cpp/resource_request.h
-index 23762da9e9ff297007685662f45343b68d7aa351..cc4b067095a46ca34e5d409b10f0c91486b399a8 100644
+index 21a29e5d737874e26cee0217b23afda6c1084d0a..214cc2c5033fd5f410e1ffba74b2089c205e5c2f 100644
 --- a/services/network/public/cpp/resource_request.h
 +++ b/services/network/public/cpp/resource_request.h
-@@ -76,6 +76,7 @@ struct COMPONENT_EXPORT(NETWORK_CPP_BASE) ResourceRequest {
+@@ -74,6 +74,7 @@ struct COMPONENT_EXPORT(NETWORK_CPP_BASE) ResourceRequest {
      bool has_user_activation = false;
      bool allow_cookies_from_browser = false;
      bool include_request_cookies_with_response = false;
@@ -49,10 +49,10 @@ index 23762da9e9ff297007685662f45343b68d7aa351..cc4b067095a46ca34e5d409b10f0c914
      mojo::PendingRemote<mojom::TrustTokenAccessObserver> trust_token_observer;
      mojo::PendingRemote<mojom::URLLoaderNetworkServiceObserver>
 diff --git a/services/network/public/cpp/url_request_mojom_traits.cc b/services/network/public/cpp/url_request_mojom_traits.cc
-index de0780c4f29026d3cc7d2742d8e80acddc6916ad..76c724151ee12fccecd36d2e9a6b7f264a9907d7 100644
+index 169b94af574000dd48c64197334038701a43a4a8..85297b343999014999301e2c512e6ffe087eac89 100644
 --- a/services/network/public/cpp/url_request_mojom_traits.cc
 +++ b/services/network/public/cpp/url_request_mojom_traits.cc
-@@ -48,6 +48,7 @@ bool StructTraits<network::mojom::TrustedUrlRequestParamsDataView,
+@@ -94,6 +94,7 @@ bool StructTraits<network::mojom::TrustedUrlRequestParamsDataView,
    out->allow_cookies_from_browser = data.allow_cookies_from_browser();
    out->include_request_cookies_with_response =
        data.include_request_cookies_with_response();
@@ -61,10 +61,10 @@ index de0780c4f29026d3cc7d2742d8e80acddc6916ad..76c724151ee12fccecd36d2e9a6b7f26
        mojo::PendingRemote<network::mojom::CookieAccessObserver>>();
    out->trust_token_observer = data.TakeTrustTokenObserver<
 diff --git a/services/network/public/cpp/url_request_mojom_traits.h b/services/network/public/cpp/url_request_mojom_traits.h
-index 60feb8454fb3d41e5297a2b10c04baee4a4c01bf..08f82304444f4596a6054b758feb3803dfa3618e 100644
+index 1690318cc495f46b1b6e16888cd05c6d9e93820b..52f4eb61e0e4be10ea0e1a01a4e166e6dd7094e9 100644
 --- a/services/network/public/cpp/url_request_mojom_traits.h
 +++ b/services/network/public/cpp/url_request_mojom_traits.h
-@@ -70,6 +70,10 @@ struct COMPONENT_EXPORT(NETWORK_CPP_BASE)
+@@ -76,6 +76,10 @@ struct COMPONENT_EXPORT(NETWORK_CPP_BASE)
        const network::ResourceRequest::TrustedParams& trusted_params) {
      return trusted_params.include_request_cookies_with_response;
    }
@@ -76,10 +76,10 @@ index 60feb8454fb3d41e5297a2b10c04baee4a4c01bf..08f82304444f4596a6054b758feb3803
    cookie_observer(
        const network::ResourceRequest::TrustedParams& trusted_params) {
 diff --git a/services/network/public/mojom/url_request.mojom b/services/network/public/mojom/url_request.mojom
-index 3e5dae789846c667f7537b04252a49b28298d53d..a229e56674cc75e8dfb78c26962f108ffd59c5e9 100644
+index e88bda2cb7d2f22e80b5ac7053a77896b7d47fc8..8e4821a6f2a4ad03b1b8b4dbae7c5d9b53898cf3 100644
 --- a/services/network/public/mojom/url_request.mojom
 +++ b/services/network/public/mojom/url_request.mojom
-@@ -73,6 +73,9 @@ struct TrustedUrlRequestParams {
+@@ -81,6 +81,9 @@ struct TrustedUrlRequestParams {
    // client which should not be able to see them.
    bool include_request_cookies_with_response = false;
  
@@ -112,20 +112,20 @@ index 5c4b8a05034f8defacbc13671fe9bc92f76ade5a..e7390e01f113755613f42d592b36108b
    string mime_type;
  
 diff --git a/services/network/url_loader.cc b/services/network/url_loader.cc
-index 3597b9a0dc32d341d288afd97c492553bb41dec6..f81857ce6f58dbe9f5e8b20841b5ed99b66b7bef 100644
+index c0fbb04f0717fafedb561acb6ec76a451d541dfe..05a94c278c4b35661e86aa899014c2bc9f3563e2 100644
 --- a/services/network/url_loader.cc
 +++ b/services/network/url_loader.cc
-@@ -666,6 +666,9 @@ URLLoader::URLLoader(
+@@ -601,6 +601,9 @@ URLLoader::URLLoader(
            mojo::SimpleWatcher::ArmingPolicy::MANUAL,
            base::SequencedTaskRunner::GetCurrentDefault()),
        per_factory_orb_state_(context.GetMutableOrbState()),
 +      report_raw_headers_(
-+        request.trusted_params &&
-+        request.trusted_params->report_raw_headers),
++                request.trusted_params &&
++                request.trusted_params->report_raw_headers),
        devtools_request_id_(request.devtools_request_id),
-       options_(PopulateOptions(options,
-                                factory_params_->is_orb_enabled,
-@@ -963,7 +966,7 @@ void URLLoader::ConfigureRequest(
+       request_mode_(request.mode),
+       request_credentials_mode_(request.credentials_mode),
+@@ -874,7 +877,7 @@ void URLLoader::ConfigureRequest(
          &URLLoader::IsSharedDictionaryReadAllowed, base::Unretained(this)));
    }
  
@@ -134,7 +134,7 @@ index 3597b9a0dc32d341d288afd97c492553bb41dec6..f81857ce6f58dbe9f5e8b20841b5ed99
      url_request_->SetResponseHeadersCallback(base::BindRepeating(
          &URLLoader::SetRawResponseHeaders, base::Unretained(this)));
    }
-@@ -2049,6 +2052,19 @@ void URLLoader::OnResponseStarted(net::URLRequest* url_request, int net_error) {
+@@ -1852,6 +1855,19 @@ void URLLoader::OnResponseStarted(net::URLRequest* url_request, int net_error) {
    }
  
    response_ = BuildResponseHead();
@@ -155,10 +155,10 @@ index 3597b9a0dc32d341d288afd97c492553bb41dec6..f81857ce6f58dbe9f5e8b20841b5ed99
  
    // Parse and remove the Trust Tokens response headers, if any are expected,
 diff --git a/services/network/url_loader.h b/services/network/url_loader.h
-index 6dc9341df6fcdaff1dcefc8d7d1e2be27f9bd3ce..da41999306bdc47743b74f4e73a7a8ca62b3d907 100644
+index 994bfb1ba0767f526458cc5cf6df179bcf7c2f3d..0baab6334a650bc34b95b0f68978e9aa2e30af59 100644
 --- a/services/network/url_loader.h
 +++ b/services/network/url_loader.h
-@@ -714,6 +714,8 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) URLLoader
+@@ -708,6 +708,8 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) URLLoader
    std::unique_ptr<ResourceScheduler::ScheduledResourceRequest>
        resource_scheduler_request_handle_;
  

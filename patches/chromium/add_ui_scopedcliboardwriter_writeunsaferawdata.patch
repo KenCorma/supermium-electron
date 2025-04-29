@@ -8,7 +8,7 @@ was removed as part of the Raw Clipboard API scrubbing.
 https://bugs.chromium.org/p/chromium/issues/detail?id=1217643
 
 diff --git a/ui/base/clipboard/scoped_clipboard_writer.cc b/ui/base/clipboard/scoped_clipboard_writer.cc
-index 48f0b7a7812a073c31ac1d7af156470efbb1b051..296ee0b51e3bdd68ceb63df4fbe5813a91669b7c 100644
+index bbdd3598894f5455f890ffde1d3cf8076b9a9176..65c53ec9f8c70d63bf6128e7e3d839abd1689eb2 100644
 --- a/ui/base/clipboard/scoped_clipboard_writer.cc
 +++ b/ui/base/clipboard/scoped_clipboard_writer.cc
 @@ -227,6 +227,16 @@ void ScopedClipboardWriter::WriteData(const std::u16string& format,
@@ -16,7 +16,7 @@ index 48f0b7a7812a073c31ac1d7af156470efbb1b051..296ee0b51e3bdd68ceb63df4fbe5813a
  }
  
 +void ScopedClipboardWriter::WriteUnsafeRawData(const std::u16string& format,
-+                                               mojo_base::BigBuffer data) {
++                                                 mojo_base::BigBuffer data) {
 +  static constexpr int kMaxRegisteredFormats = 100;
 +  if (counter_ >= kMaxRegisteredFormats)
 +    return;
@@ -24,12 +24,12 @@ index 48f0b7a7812a073c31ac1d7af156470efbb1b051..296ee0b51e3bdd68ceb63df4fbe5813a
 +  platform_representations_.push_back(
 +      {base::UTF16ToUTF8(format), std::move(data)});
 +}
-+
++  
  void ScopedClipboardWriter::Reset() {
    objects_.clear();
-   raw_objects_.clear();
+   platform_representations_.clear();
 diff --git a/ui/base/clipboard/scoped_clipboard_writer.h b/ui/base/clipboard/scoped_clipboard_writer.h
-index e63c08b06c00dc0b1bd9c8339d3c6375e952e4f7..9e35ab7e6512c749fdea75fa863a97318541d350 100644
+index af932ade8d50f304be850dc1ff4f77b618c12c1f..a907fdebfa901938abded0eae203c093d8387f5b 100644
 --- a/ui/base/clipboard/scoped_clipboard_writer.h
 +++ b/ui/base/clipboard/scoped_clipboard_writer.h
 @@ -88,6 +88,10 @@ class COMPONENT_EXPORT(UI_BASE_CLIPBOARD) ScopedClipboardWriter {

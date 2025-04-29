@@ -19,10 +19,10 @@ would be removed from its snapped state when re-shown. This fixes that.
 Upstreamed at https://chromium-review.googlesource.com/c/chromium/src/+/6330848.
 
 diff --git a/ui/views/win/hwnd_message_handler.cc b/ui/views/win/hwnd_message_handler.cc
-index 1ed6a143f76c21e0cfd5c7b319171c6f38a5df19..c4d1d483454591031bd76dffced0c1d821800e13 100644
+index 53a0df9020af1d6267db2e640231d122d3f025e2..7a040b61c782556c80c78045d3676db11bb3ca7f 100644
 --- a/ui/views/win/hwnd_message_handler.cc
 +++ b/ui/views/win/hwnd_message_handler.cc
-@@ -674,7 +674,8 @@ void HWNDMessageHandler::Show(ui::mojom::WindowShowState show_state,
+@@ -660,7 +660,8 @@ void HWNDMessageHandler::Show(ui::mojom::WindowShowState show_state,
      SetWindowPlacement(hwnd(), &placement);
      native_show_state = SW_SHOWMAXIMIZED;
    } else {
@@ -32,7 +32,7 @@ index 1ed6a143f76c21e0cfd5c7b319171c6f38a5df19..c4d1d483454591031bd76dffced0c1d8
  
      // Use SW_SHOW/SW_SHOWNA instead of SW_SHOWNORMAL/SW_SHOWNOACTIVATE so that
      // the window is not restored to its original position if it is maximized.
-@@ -684,7 +685,8 @@ void HWNDMessageHandler::Show(ui::mojom::WindowShowState show_state,
+@@ -670,7 +671,8 @@ void HWNDMessageHandler::Show(ui::mojom::WindowShowState show_state,
      // position, some do not. See crbug.com/1296710
      switch (show_state) {
        case ui::mojom::WindowShowState::kInactive:
@@ -42,7 +42,7 @@ index 1ed6a143f76c21e0cfd5c7b319171c6f38a5df19..c4d1d483454591031bd76dffced0c1d8
          break;
        case ui::mojom::WindowShowState::kMaximized:
          native_show_state = SW_SHOWMAXIMIZED;
-@@ -695,9 +697,11 @@ void HWNDMessageHandler::Show(ui::mojom::WindowShowState show_state,
+@@ -681,9 +683,11 @@ void HWNDMessageHandler::Show(ui::mojom::WindowShowState show_state,
        case ui::mojom::WindowShowState::kNormal:
          if ((GetWindowLong(hwnd(), GWL_EXSTYLE) & WS_EX_TRANSPARENT) ||
              (GetWindowLong(hwnd(), GWL_EXSTYLE) & WS_EX_NOACTIVATE)) {

@@ -12,10 +12,10 @@ invisible state of the `viz::DisplayScheduler` owned
 by the `ui::Compositor`.
 
 diff --git a/ui/compositor/compositor.cc b/ui/compositor/compositor.cc
-index e79025575281e14d53afc53ad12c1eb26775cf86..191750dc9b40fb3187b4d76392c9ac926e07462f 100644
+index 9acf9628c6d4a2c316c0382dff06dbceb1dfd03e..3752f59470d5f3fbfad77a0fa34593fd9059fcee 100644
 --- a/ui/compositor/compositor.cc
 +++ b/ui/compositor/compositor.cc
-@@ -350,7 +350,8 @@ void Compositor::SetLayerTreeFrameSink(
+@@ -346,7 +346,8 @@ void Compositor::SetLayerTreeFrameSink(
    if (display_private_) {
      disabled_swap_until_resize_ = false;
      display_private_->Resize(size());
@@ -25,7 +25,7 @@ index e79025575281e14d53afc53ad12c1eb26775cf86..191750dc9b40fb3187b4d76392c9ac92
      display_private_->SetDisplayColorSpaces(display_color_spaces_);
      display_private_->SetDisplayColorMatrix(
          gfx::SkM44ToTransform(display_color_matrix_));
-@@ -570,7 +571,9 @@ void Compositor::SetVisible(bool visible) {
+@@ -557,7 +558,9 @@ void Compositor::SetVisible(bool visible) {
    // updated then. We need to call this even if the visibility hasn't changed,
    // for the same reason.
    if (display_private_)
@@ -36,7 +36,7 @@ index e79025575281e14d53afc53ad12c1eb26775cf86..191750dc9b40fb3187b4d76392c9ac92
  
    if (changed) {
      observer_list_.Notify(&CompositorObserver::OnCompositorVisibilityChanged,
-@@ -1023,6 +1026,15 @@ void Compositor::MaybeUpdateObserveBeginFrame() {
+@@ -1008,6 +1011,15 @@ void Compositor::MaybeUpdateObserveBeginFrame() {
        host_begin_frame_observer_->GetBoundRemote());
  }
  
@@ -53,10 +53,10 @@ index e79025575281e14d53afc53ad12c1eb26775cf86..191750dc9b40fb3187b4d76392c9ac92
  void Compositor::SetSeamlessRefreshRates(
      const std::vector<float>& seamless_refresh_rates) {
 diff --git a/ui/compositor/compositor.h b/ui/compositor/compositor.h
-index 8e1e8c3eb1c23a6b8dcb006154ab36b91e6bcc04..962e807c07365015b964c9b6361035d27ec8e4ae 100644
+index 497f3299ba459da88ff9c2abdefdd27480324b0e..db44edc070d36edb3230a4fde9f41444d9f10064 100644
 --- a/ui/compositor/compositor.h
 +++ b/ui/compositor/compositor.h
-@@ -511,6 +511,10 @@ class COMPOSITOR_EXPORT Compositor : public base::PowerSuspendObserver,
+@@ -509,6 +509,10 @@ class COMPOSITOR_EXPORT Compositor : public base::PowerSuspendObserver,
  
    const cc::LayerTreeSettings& GetLayerTreeSettings() const;
  
@@ -67,7 +67,7 @@ index 8e1e8c3eb1c23a6b8dcb006154ab36b91e6bcc04..962e807c07365015b964c9b6361035d2
    size_t saved_events_metrics_count_for_testing() const {
      return host_->saved_events_metrics_count_for_testing();
    }
-@@ -684,6 +688,12 @@ class COMPOSITOR_EXPORT Compositor : public base::PowerSuspendObserver,
+@@ -657,6 +661,12 @@ class COMPOSITOR_EXPORT Compositor : public base::PowerSuspendObserver,
    // See go/report-ux-metrics-at-painting for details.
    bool animation_started_ = false;
  
@@ -77,6 +77,6 @@ index 8e1e8c3eb1c23a6b8dcb006154ab36b91e6bcc04..962e807c07365015b964c9b6361035d2
 +  // visible in order to keep generating frames.
 +  bool background_throttling_ = true;
 +
-   TrackerId next_compositor_metrics_tracker_id_ = 1u;
+   TrackerId next_throughput_tracker_id_ = 1u;
    struct TrackerState {
      TrackerState();
